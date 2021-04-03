@@ -103,13 +103,22 @@ int getflag(int argc, char **argv, const char *flags)
             c = '?';
             break;
         }
-        if (flagarg != NULL || flagp[1] != ':')
+
+        if (flagp[1] != ':')
         {
-            if (flagarg != NULL && flagp[1] != ':')
+            /* We expect no argument */
+            if (flagarg != NULL)
             {
                 /* error, a simple flag with an argument */
                 c = '?';
             }
+            break;
+        }
+
+        /* We expect an argument */
+        if (flagarg != NULL)
+        {
+            /* ... and have one */
             break;
         }
 
@@ -118,9 +127,10 @@ int getflag(int argc, char **argv, const char *flags)
         {
             /* auahh, no flag-arg */
             flagstart = argstart;
-            c = '?';
+            c = ':';
             break;
         }
+
         flagarg = argv[++flagind];
     } while (0);
     /* skip to next arg */

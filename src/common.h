@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_CB
 #define ALREADY_INCLUDED_CB
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -31,4 +34,7 @@
 typedef int cb_cmp(const void *a, const void *b);
 typedef void cb_free(void *a);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

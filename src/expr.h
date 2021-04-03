@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_EXPR
 #define ALREADY_INCLUDED_EXPR
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -54,4 +57,7 @@ struct expr *new_expr_symref(const char *symbol);
 struct expr *new_expr_number(i32 number);
 void expr_dump(int level, struct expr *e);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

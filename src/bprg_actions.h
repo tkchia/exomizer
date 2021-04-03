@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_BPRG_ACTIONS
 #define ALREADY_INCLUDED_BPRG_ACTIONS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2003 Magnus Lind.
@@ -36,4 +39,7 @@ bprg_renumber(struct bprg_ctx *ctx);
 void
 bprg_link_patch(struct bprg_ctx *ctx);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

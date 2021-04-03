@@ -1,5 +1,8 @@
 #ifndef EXO_HELPER_ALREADY_INCLUDED
 #define EXO_HELPER_ALREADY_INCLUDED
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005, 2013, 2015 Magnus Lind.
@@ -29,21 +32,23 @@
  */
 
 #include "log.h"
-#include "membuf.h"
+#include "buf.h"
 #include "search.h"
 #include "optimal.h"
 #include "flags.h"
 
-#define DECRUNCH_OPTIONS_DEFAULT {PFLAG_BITS_ORDER_BE | \
+#define DECRUNCH_OPTIONS_DEFAULT {NULL, PFLAG_BITS_ORDER_BE |    \
                                   PFLAG_BITS_COPY_GT_7 | \
-                                  PFLAG_IMPL_1LITERAL, \
-                                  1}
+                                  PFLAG_IMPL_1LITERAL |  \
+                                  PFLAG_REUSE_OFFSET,    \
+                                  1, 0}
 
-#define CRUNCH_OPTIONS_DEFAULT {NULL, 65535, 65535, 65535, 0, 1, \
-                                PFLAG_BITS_ORDER_BE | \
-                                PFLAG_BITS_COPY_GT_7 | \
-                                PFLAG_IMPL_1LITERAL, \
-                                0}
+#define CRUNCH_OPTIONS_DEFAULT {NULL, 100, 65535, 65535, 0, 1, \
+                                PFLAG_BITS_ORDER_BE |            \
+                                PFLAG_BITS_COPY_GT_7 |           \
+                                PFLAG_IMPL_1LITERAL |            \
+                                PFLAG_REUSE_OFFSET,              \
+                                0, 0, 0, NULL}
 
 struct common_flags
 {
@@ -51,12 +56,23 @@ struct common_flags
     const char *outfile;
 };
 
-#define CRUNCH_FLAGS "cCe:Em:M:p:P:T:o:qBv"
+#define STATIC_CRUNCH_INFO_INIT {0, 0, 0}
+struct crunch_info
+{
+    int traits_used;
+    int max_len;
+    int max_offset;
+    int needed_safety_offset;
+};
+
+#define CRUNCH_FLAGS "cCe:Em:M:p:P:T:o:N:qBv"
 #define BASE_FLAGS "o:qBv"
 
 void print_crunch_flags(enum log_level level, const char *default_outfile);
 
 void print_base_flags(enum log_level level, const char *default_outfile);
+
+void print_crunch_info(enum log_level level, struct crunch_info *info);
 
 typedef void print_usage_f(const char *appl, enum log_level level,
                            const char *default_outfile);
@@ -75,7 +91,7 @@ void handle_base_flags(int flag_char, /* IN */
 
 struct crunch_options
 {
-    const char *exported_encoding;
+    const char *imported_encoding;
     int max_passes;
     int max_len;
     int max_offset;
@@ -83,41 +99,54 @@ struct crunch_options
     int output_header;
     int flags_proto;
     int flags_notrait;
-};
-
-#define STATIC_CRUNCH_INFO_INIT {0, 0, 0}
-struct crunch_info
-{
-    int traits_used;
-    int max_len;
-    int needed_safety_offset;
+    /* 0 backward, 1 forward */
+    int direction_forward;
+    int write_reverse;
+    const char *noread_filename;
 };
 
 void print_license(void);
 
-void crunch_backwards(struct membuf *inbuf,
-                      struct membuf *outbuf,
-                      const struct crunch_options *options, /* IN */
-                      struct crunch_info *info); /* OUT */
+struct io_bufs
+{
+    struct buf in;
+    int in_off;
+    struct buf out;
+    struct crunch_info info;
+};
 
-void crunch(struct membuf *inbuf,
-            struct membuf *outbuf,
+void crunch_multi(struct vec *io_bufs,
+                  struct buf *noread_in,
+                  struct buf *enc_buf,
+                  const struct crunch_options *options, /* IN */
+                  struct crunch_info *merged_info); /* OUT */
+
+void crunch(struct buf *inbuf,
+            int in_off,
+            struct buf *noread_inbuf,
+            struct buf *outbuf,
             const struct crunch_options *options, /* IN */
             struct crunch_info *info); /* OUT */
 
 struct decrunch_options
 {
+    const char *imported_encoding;
     /* see crunch_options flags field */
     int flags_proto;
     /* 0 backward, 1 forward */
-    int direction;
+    int direction_forward;
+    int write_reverse;
 };
 
 void decrunch(int level,
-              struct membuf *inbuf,
-              struct membuf *outbuf,
+              struct buf *inbuf,
+              int in_off,
+              struct buf *outbuf,
               struct decrunch_options *dopts);
 
 void reverse_buffer(char *start, int len);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

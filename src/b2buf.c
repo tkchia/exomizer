@@ -23,7 +23,7 @@ void generate(const char *name, FILE *in, FILE *out)
         fprintf(out, "\n");
     }
     fprintf(out, "};\n");
-    fprintf(out, "struct membuf %s[1] = {{%s_arr, %d, %d}};\n",
+    fprintf(out, "struct buf %s = {%s_arr, %d, %d};\n",
             name, name, size, size);
 }
 
@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error: must give at least one input file.\n");
     }
 
-    fprintf(stdout, "#include \"membuf.h\"\n");
+    fprintf(stdout, "#include \"buf.h\"\n");
     for(i = 1; i < argc; ++i)
     {
         FILE *in = fopen(argv[i], "rb");

@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_6502EMU
 #define ALREADY_INCLUDED_6502EMU
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2007 - 2008 Magnus Lind.
@@ -57,4 +60,7 @@ struct cpu_ctx
 
 void next_inst(struct cpu_ctx *r);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

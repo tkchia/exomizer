@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_OPTIMAL
 #define ALREADY_INCLUDED_OPTIMAL
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2002 - 2005 Magnus Lind.
@@ -31,29 +34,33 @@
 #include "search.h"
 #include "output.h"
 
-float optimal_encode(const_matchp mp,   /* IN */
-                     encode_match_data emp,     /* IN */
+float optimal_encode(const struct match *mp,   /* IN */
+                     struct encode_match_data *emp,     /* IN */
+                     unsigned int prev_offset, /* IN */
                      struct encode_match_buckets *embp);/* OUT */
 
-void optimal_init(encode_match_data emp,        /* IN/OUT */
+void optimal_init(struct encode_match_data *emp,        /* IN/OUT */
                   int flags_notrait,    /* IN */
                   int flags_proto);     /* IN */
 
-void optimal_free(encode_match_data emd);       /* IN */
+void optimal_free(struct encode_match_data *emd);       /* IN */
 
-void optimal_optimize(encode_match_data emd,    /* IN/OUT */
-                      matchp_enum_get_next_f * f,       /* IN */
+void optimal_optimize(struct encode_match_data *emd,    /* IN/OUT */
+                      match_enum_next_f *enum_next_f,   /* IN */
                       void *priv);      /* IN */
 
-void optimal_encoding_import(encode_match_data emd,     /* IN/OUT */
+void optimal_encoding_import(struct encode_match_data *emd,     /* IN/OUT */
                              const char *encoding);     /* IN */
 
-void optimal_encoding_export(encode_match_data emd,     /* IN */
-                             struct membuf *export);    /* OUT */
+void optimal_encoding_export(struct encode_match_data *emd,     /* IN */
+                             struct buf *export);    /* OUT */
 
-void optimal_dump(int level, encode_match_data emp);       /* IN */
+void optimal_dump(int level, struct encode_match_data *emp);       /* IN */
 
-void optimal_out(output_ctx out,        /* IN/OUT */
-                 encode_match_data emd);        /* IN */
+void optimal_out(struct output_ctx *out,        /* IN/OUT */
+                 struct encode_match_data *emd);        /* IN */
 
+#ifdef __cplusplus
+}
+#endif
 #endif

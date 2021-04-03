@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_MAP
 #define ALREADY_INCLUDED_MAP
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2006 Magnus Lind.
@@ -66,4 +69,7 @@ int map_equals(const struct map *m1, const struct map *m2, cb_cmp *f);
 void map_get_iterator(const struct map *p, struct map_iterator *i);
 const struct map_entry *map_iterator_next(struct map_iterator *i);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

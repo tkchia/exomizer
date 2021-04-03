@@ -24,6 +24,11 @@
  *   specific prior written permission.
  */
 
+/**
+ * This decompressor decompresses files that have been compressed
+ * using the raw sub-sub command with the -b (not default) and -P39
+ * (default) setting of the raw command.
+ */
 #include "exodecr.h"
 
 static unsigned short int base[52];
@@ -105,7 +110,8 @@ exo_decrunch(const char *in, char *out)
     unsigned short int length;
     unsigned short int offset;
     char c;
-    char literal;
+    char literal = 1;
+    char reuse_offset_state = 1;
 
     bit_buffer = read_byte(&in);
 
@@ -140,23 +146,27 @@ exo_decrunch(const char *in, char *out)
         }
         length = base[index];
         length += read_bits(&in, bits[index]);
-        switch(length)
+
+        if ((reuse_offset_state & 3) != 1 || !read_bits(&in, 1))
         {
-        case 1:
-            index = read_bits(&in, 2);
-            index += 48;
-            break;
-        case 2:
-            index = read_bits(&in, 4);
-            index += 32;
-            break;
-        default:
-            index = read_bits(&in, 4);
-            index += 16;
-            break;
+            switch(length)
+            {
+            case 1:
+                index = read_bits(&in, 2);
+                index += 48;
+                break;
+            case 2:
+                index = read_bits(&in, 4);
+                index += 32;
+                break;
+            default:
+                index = read_bits(&in, 4);
+                index += 16;
+                break;
+            }
+            offset = base[index];
+            offset += read_bits(&in, bits[index]);
         }
-        offset = base[index];
-        offset += read_bits(&in, bits[index]);
     copy:
         do
         {
@@ -172,6 +182,8 @@ exo_decrunch(const char *in, char *out)
             *out = c;
         }
         while(--length > 0);
+
+        reuse_offset_state = (reuse_offset_state << 1) | literal;
     }
     return out;
 }

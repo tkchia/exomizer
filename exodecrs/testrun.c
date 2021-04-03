@@ -30,7 +30,8 @@
 #include "../src/6502emu.h"
 #include "../src/areatrace.h"
 #include "../src/int.h"
-#include "../src/membuf_io.h"
+#include "../src/buf_io.h"
+#include "../src/perf.h"
 
 #include <stdlib.h>
 
@@ -53,22 +54,22 @@ static u8 mem_access_read(struct mem_access *this, u16 address)
     return ctx->mem[address];
 }
 
-void save_single(const char *in_name, struct membuf *mem, int start, int end)
+void save_single(const char *in_name, struct buf *mem, int start, int end)
 {
-    struct membuf mb_name;
+    struct buf mb_name;
     const char *out_name;
 
-    membuf_init(&mb_name);
+    buf_init(&mb_name);
 
-    membuf_printf(&mb_name, "%s.out", in_name);
-    out_name = (const char *)membuf_get(&mb_name);
+    buf_printf(&mb_name, "%s.out", in_name);
+    out_name = (const char *)buf_data(&mb_name);
 
-    membuf_truncate(mem, end);
-    membuf_trim(mem, start);
+    buf_remove(mem, end, -1);
+    buf_remove(mem, 0, start);
 
     write_file(out_name, mem);
 
-    membuf_free(&mb_name);
+    buf_free(&mb_name);
 }
 
 void test_single(const char *prg_name, const char *data_name,
@@ -77,15 +78,15 @@ void test_single(const char *prg_name, const char *data_name,
     struct cpu_ctx r;
     struct load_info prg_info;
     struct load_info data_info;
-    struct membuf mem_mb;
+    struct buf mem_mb;
     u8 *mem;
     struct mem_ctx mem_ctx;
     int start;
     int end;
 
-    membuf_init(&mem_mb);
-    membuf_atleast(&mem_mb, 65536);
-    mem = membuf_get(&mem_mb);
+    buf_init(&mem_mb);
+    buf_append(&mem_mb, NULL, 65536);
+    mem = buf_data(&mem_mb);
     memset(mem, 0, 65536);
     mem_ctx.mem = mem;
 
@@ -138,7 +139,7 @@ void test_single(const char *prg_name, const char *data_name,
     save_single(data_name, &mem_mb, start, end);
 
     areatrace_free(&mem_ctx.at);
-    membuf_free(&mem_mb);
+    buf_free(&mem_mb);
 
     if (cyclesp != NULL)
     {
@@ -156,6 +157,8 @@ void test_single(const char *prg_name, const char *data_name,
 
 int main(int argc, char *argv[])
 {
+    struct perf_ctx perf;
+    struct buf buf;
     int i;
     int cycles;
     int inlen;
@@ -163,39 +166,31 @@ int main(int argc, char *argv[])
     int cycles_sum = 0;
     int inlen_sum = 0;
     int outlen_sum = 0;
-    const char *prg_name;
 
     /* init logging */
     LOG_INIT_CONSOLE(LOG_TERSE);
 
-    prg_name = argv[1];
+    perf_init(&perf);
 
-    LOG(LOG_TERSE, ("|File name                   "
-                    "|Size    |Reduced |Cycles    |C/B out|C/B in |\n"));
-    LOG(LOG_TERSE, ("|----------------------------"
-                    "|--------|--------|----------|-------|-------|\n"));
-    for (i = 2; i < argc; ++i)
+    for (i = 1; i < argc; i += 2)
     {
-        test_single(prg_name, argv[i], &cycles, &inlen, &outlen);
-        LOG(LOG_TERSE,
-            ("|%-28s|%8d|%7.2f%%|%10d|%7.2f|%7.2f|\n",
-             argv[i], inlen, 100.0 * (outlen - inlen) / outlen, cycles,
-             (float)cycles / outlen, (float)cycles / inlen));
+        test_single(argv[i], argv[i + 1], &cycles, &inlen, &outlen);
+        perf_add(&perf, argv[i + 1], inlen, outlen, cycles);
         cycles_sum += cycles;
         inlen_sum += inlen;
         outlen_sum += outlen;
     }
-
     if (argc > 3)
     {
-        LOG(LOG_TERSE, ("|----------------------------"
-                        "|--------|--------|----------|-------|-------|\n"));
-        LOG(LOG_TERSE,
-            ("|%-28s|%8d|%7.2f%%|%10d|%7.2f|%7.2f|\n",
-             "Total", inlen_sum, 100.0 * (outlen_sum - inlen_sum) / outlen_sum,
-             cycles_sum, (float)cycles_sum / outlen_sum,
-             (float)cycles_sum / inlen_sum));
+        perf_add(&perf, "Total", inlen_sum, outlen_sum, cycles_sum);
     }
+
+    buf_init(&buf);
+    perf_buf_print(&perf, &buf);
+    LOG(LOG_TERSE, ("%s", (char*)buf_data(&buf)));
+
+    buf_free(&buf);
+    perf_free(&perf);
 
     return 0;
 }

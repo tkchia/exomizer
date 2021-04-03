@@ -279,7 +279,7 @@ open_file(const char *name, struct open_info *open_info)
     {
         char *p = tries_arr[tries];
         load = OPEN_DEFAULT;
-        if (p[0] != '\0' && str_to_int(p, &load) != 0)
+        if (p[0] != '\0' && str_to_int(p, &load, NULL) != 0)
         {
             /* we fail */
             LOG(LOG_ERROR, (" can't parse load address from \"%s\"\n", p));
@@ -290,7 +290,7 @@ open_file(const char *name, struct open_info *open_info)
     {
         char *p = tries_arr[tries];
         offset = OPEN_DEFAULT;
-        if (p[0] != '\0' && str_to_int(p, &offset) != 0)
+        if (p[0] != '\0' && str_to_int(p, &offset, NULL) != 0)
         {
             /* we fail */
             LOG(LOG_ERROR, (" can't parse offset from \"%s\"\n", p));
@@ -303,7 +303,7 @@ open_file(const char *name, struct open_info *open_info)
         length = OPEN_DEFAULT;
         if (p[0] != '\0')
         {
-            if (str_to_int(p, &length) != 0)
+            if (str_to_int(p, &length, NULL) != 0)
             {
                 /* we fail */
                 LOG(LOG_ERROR, (" can't parse length from \"%s\"\n", p));
@@ -804,9 +804,9 @@ static int try_load_bbc_inf(unsigned char mem[65536],
     unsigned int run;
 
     /* try to open shadowing .inf file */
-    struct membuf name_buf = STATIC_MEMBUF_INIT;
-    membuf_printf(&name_buf, "%s.inf", filename);
-    p = membuf_get(&name_buf);
+    struct buf name_buf = STATIC_BUF_INIT;
+    buf_printf(&name_buf, "%s.inf", filename);
+    p = buf_data(&name_buf);
     inf = fopen(p, "rb");
     if (inf == NULL)
     {
@@ -837,7 +837,7 @@ static int try_load_bbc_inf(unsigned char mem[65536],
     }
 
     /* success */
-    membuf_free(&name_buf);
+    buf_free(&name_buf);
     return 1;
 }
 
@@ -925,8 +925,7 @@ void load_located(const char *filename, unsigned char mem[65536],
          filename, info->start, info->end));
 }
 
-/* returns 0 if ok, 1 otherwise */
-int str_to_int(const char *str, int *value)
+int str_to_int(const char *str, int *value, const char **strp)
 {
     int status = 0;
     do {
@@ -957,8 +956,14 @@ int str_to_int(const char *str, int *value)
         }
 
         lval = strtol(str, &str_end, base);
+        if (str == str_end)
+        {
+            /* found nothing to parse */
+            status = 1;
+            break;
+        }
 
-        if(*str_end != '\0')
+        if(strp == NULL && *str_end != '\0')
         {
             /* there is garbage in the string */
             status = 1;
@@ -970,6 +975,12 @@ int str_to_int(const char *str, int *value)
             /* all is well, set the out parameter */
             *value = (int)lval;
         }
+
+        if(strp != NULL)
+        {
+            *strp = str_end;
+        }
+
     } while(0);
 
     return status;

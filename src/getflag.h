@@ -1,5 +1,9 @@
 #ifndef ALREADY_INCLUDED_GETFLAG
 #define ALREADY_INCLUDED_GETFLAG
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Copyright (c) 2002, 2003 Magnus Lind.
  *
@@ -27,10 +31,28 @@
  *
  */
 
+/**
+ * Global state of the getflag function. Set this to 1 to start
+ * the flag parsing from the beginning. (IN/OUT)
+ */
 extern int flagind;
+/**
+ * The current flag. (OUT)
+ */
 extern int flagflag;
+/**
+ * The argument of the current flag, NULL for flags without args. (OUT)
+ */
 extern const char *flagarg;
 
+/**
+ * Incrementally get flags from the given arguments.
+ * Returns -1 if all flags have been returned.
+ * Returns '?' if the flag is unknown. Check flagflag for the actual flag.
+ */
 int getflag(int argc, char *argv[], const char *flags);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

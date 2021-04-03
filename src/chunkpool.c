@@ -38,6 +38,7 @@ chunkpool_init(struct chunkpool *ctx, int item_size)
     ctx->item_pos = ctx->item_end;
     ctx->current_chunk = NULL;
     vec_init(&ctx->used_chunks, sizeof(void*));
+    ctx->alloc_count = 0;
 }
 
 static void chunk_free(void *chunks, int item_pos, int item_size, cb_free *f)
@@ -96,6 +97,8 @@ chunkpool_malloc(struct chunkpool *ctx)
 	{
 	    LOG(LOG_ERROR, ("out of memory error in file %s, line %d\n",
 			    __FILE__, __LINE__));
+	    LOG(LOG_ERROR, ("alloced %d items of size %d\n",
+                            ctx->alloc_count, ctx->item_size));
 	    exit(1);
 	}
 	vec_push(&ctx->used_chunks, &ctx->current_chunk);
@@ -104,6 +107,7 @@ chunkpool_malloc(struct chunkpool *ctx)
     }
     p = (char*)ctx->current_chunk + ctx->item_pos;
     ctx->item_pos += ctx->item_size;
+    ++ctx->alloc_count;
     return p;
 }
 

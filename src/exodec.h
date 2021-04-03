@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_EXODEC
 #define ALREADY_INCLUDED_EXODEC
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -28,7 +31,7 @@
  *
  */
 
-#include "membuf.h"
+#include "buf.h"
 #include "flags.h"
 
 struct dec_table
@@ -45,23 +48,29 @@ struct dec_ctx
     int inpos;
     int inend;
     unsigned char *inbuf;
-    struct membuf *outbuf;
+    struct buf *outbuf;
     unsigned char bitbuf;
     /* dep_table */
-    struct dec_table t[1];
+    struct dec_table t;
     int bits_read;
     int flags_proto;
 };
 
 /* returns the encoding */
 void
-dec_ctx_init(struct dec_ctx ctx[1],
-             struct membuf *inbuf, struct membuf *outbuf, int flags_proto,
-             struct membuf *enc_out);   /* OUT, might be null for no output */
+dec_ctx_init(struct dec_ctx *ctx,
+             struct buf *enc_in, /* optional */
+             struct buf *inbuf, struct buf *outbuf, int flags_proto);
 
 void
-dec_ctx_free(struct dec_ctx ctx[1]);
+dec_ctx_table_dump(struct dec_ctx *ctx, struct buf *enc_out);
 
-void dec_ctx_decrunch(struct dec_ctx ctx[1]);
+void
+dec_ctx_free(struct dec_ctx *ctx);
 
+void dec_ctx_decrunch(struct dec_ctx *ctx);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

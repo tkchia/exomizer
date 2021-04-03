@@ -35,21 +35,22 @@
 #include "optimal.h"
 #include "output.h"
 #include "getflag.h"
-#include "membuf_io.h"
+#include "buf_io.h"
 #include "exo_helper.h"
 #include "exo_util.h"
 #include "parse.h"
 #include "named_buffer.h"
 #include "desfx.h"
+#include "perf.h"
 
-extern struct membuf sfxdecr[];
+extern struct buf sfxdecr;
 
 #define STR2(X) #X
 #define STR(X) STR2(X)
 
 #define DEFAULT_OUTFILE "a.out"
 
-static void load_plain_file(const char *name, struct membuf *mb)
+static void load_plain_file(const char *name, struct buf *mb)
 {
     int file_len;
     int read_len;
@@ -68,7 +69,7 @@ static void load_plain_file(const char *name, struct membuf *mb)
             exit(1);
         }
         *p = '\0';
-        if(str_to_int(p + 1, &offset))
+        if(str_to_int(p + 1, &offset, NULL))
         {
             LOG(LOG_ERROR, ("Error: invalid value for plain file offset.\n"));
             exit(1);
@@ -85,7 +86,7 @@ static void load_plain_file(const char *name, struct membuf *mb)
                 exit(1);
             }
             *p = '\0';
-            if(str_to_int(p + 1, &offset))
+            if(str_to_int(p + 1, &offset, NULL))
             {
                 LOG(LOG_ERROR,
                     ("Error: invalid value for plain file offset.\n"));
@@ -142,7 +143,7 @@ static void load_plain_file(const char *name, struct membuf *mb)
             fclose(in);
             exit(1);
         }
-        membuf_append(mb, buf, r);
+        buf_append(mb, buf, r);
         len -= r;
     }
     while(len > 0);
@@ -151,26 +152,26 @@ static void load_plain_file(const char *name, struct membuf *mb)
 
 static
 int
-do_load(char *file_name, struct membuf *mem)
+do_load(const char *file_name, struct buf *mem)
 {
-    struct load_info info[1];
+    struct load_info info;
     unsigned char *p;
 
-    membuf_clear(mem);
-    membuf_append(mem, NULL, 65536);
-    p = membuf_get(mem);
+    buf_clear(mem);
+    buf_append(mem, NULL, 65536);
+    p = buf_data(mem);
 
-    info->basic_txt_start = -1;
+    info.basic_txt_start = -1;
 
-    load_located(file_name, p, info);
+    load_located(file_name, p, &info);
 
     /* move memory to beginning of buffer */
-    membuf_truncate(mem, info->end);
-    membuf_trim(mem, info->start);
+    buf_remove(mem, info.end, -1);
+    buf_remove(mem, 0, info.start);
 
-    LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.",
-                     info->start, info->end));
-    return info->start;
+    LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.\n",
+                     info.start, info.end));
+    return info.start;
 }
 
 struct target_info
@@ -185,7 +186,7 @@ struct target_info
 
 static
 int
-do_loads(int filec, char *filev[], struct membuf *mem,
+do_loads(int filec, char *filev[], struct buf *mem,
          int basic_txt_start, int sys_token, int trim_sys,
          int *basic_var_startp, int *runp, enum file_type *typep)
 {
@@ -195,30 +196,30 @@ do_loads(int filec, char *filev[], struct membuf *mem,
     int basic_code = 0;
     int i;
     unsigned char *p;
-    struct load_info info[1];
+    struct load_info info;
     enum file_type type = RAW;
 
 
-    membuf_clear(mem);
-    membuf_append(mem, NULL, 65536);
-    p = membuf_get(mem);
+    buf_clear(mem);
+    buf_append(mem, NULL, 65536);
+    p = buf_data(mem);
 
     for (i = 0; i < filec; ++i)
     {
-        info->basic_txt_start = basic_txt_start;
-        load_located(filev[i], p, info);
-        run = info->run;
+        info.basic_txt_start = basic_txt_start;
+        load_located(filev[i], p, &info);
+        run = info.run;
         if(run != -1 && runp != NULL)
         {
             LOG(LOG_DEBUG, ("Propagating found run address $%04X.\n",
-                            info->run));
-            *runp = info->run;
+                            info.run));
+            *runp = info.run;
         }
         if (type == RAW)
         {
-            type = info->type;
+            type = info.type;
         }
-        else if (type != info->type)
+        else if (type != info.type)
         {
             /* mixed types */
             type = UNKNOWN;
@@ -227,12 +228,12 @@ do_loads(int filec, char *filev[], struct membuf *mem,
         /* do we expect any basic file? */
         if(basic_txt_start >= 0)
         {
-            if(info->basic_var_start >= 0)
+            if(info.basic_var_start >= 0)
             {
                 basic_code = 1;
                 if(basic_var_startp != NULL)
                 {
-                    *basic_var_startp = info->basic_var_start;
+                    *basic_var_startp = info.basic_var_start;
                 }
                 if(runp != NULL && run == -1)
                 {
@@ -242,33 +243,33 @@ do_loads(int filec, char *filev[], struct membuf *mem,
                     run = find_sys(p + basic_txt_start, sys_token, &stub_len);
                     *runp = run;
                     if (trim_sys &&
-                        basic_txt_start == info->start &&
-                        min_start >= info->start)
+                        basic_txt_start == info.start &&
+                        min_start >= info.start)
                     {
-                        if (run >= info->start &&
-                            run < info->start + stub_len)
+                        if (run >= info.start &&
+                            run < info.start + stub_len)
                         {
                             /* the run address points into the sys stub,
                                trim up to it but no further */
-                            info->start = run;
+                            info.start = run;
                         }
                         else
                         {
                             /* trim the sys stub*/
-                            info->start += stub_len;
+                            info.start += stub_len;
                         }
                     }
                 }
             }
         }
 
-        if (info->start < min_start)
+        if (info.start < min_start)
         {
-            min_start = info->start;
+            min_start = info.start;
         }
-        if (info->end > max_end)
+        if (info.end > max_end)
         {
-            max_end = info->end;
+            max_end = info.end;
         }
     }
 
@@ -317,8 +318,8 @@ do_loads(int filec, char *filev[], struct membuf *mem,
     }
 
     /* move memory to beginning of buffer */
-    membuf_truncate(mem, max_end);
-    membuf_trim(mem, min_start);
+    buf_remove(mem, max_end, -1);
+    buf_remove(mem, 0, min_start);
 
     return min_start;
 }
@@ -361,7 +362,7 @@ void print_mem_usage(const char *appl, enum log_level level,
          "  memory after being loaded or assembled there.\n", appl));
     LOG(level,
         ("  -l <address>  adds load address to the outfile, using \"none\" as <address>\n"
-         "                will skip the load address.\n"));
+         "                will skip the load address, defaults to \"auto\".\n"));
     LOG(level,
         ("  -f            crunch forward\n"));
     print_crunch_flags(level, default_outfile);
@@ -431,44 +432,197 @@ void print_desfx_usage(const char *appl, enum log_level level,
          "  sfx command.\n", appl));
     LOG(level,
         ("  -e <address>  overrides the automatic entry point detection, using \"load\" as\n"
-         "                <address> sets it to the load address of the infile\n"));
+         "                <address> sets it to the load address of the infile\n"         "  -S            enables performance statistics output and allows multiple input\n"
+         "                files"));
 
     print_base_flags(level, default_outfile);
 }
 
-static void output_crunch_info(struct crunch_info *info)
+struct io_bufs_located
 {
-        LOG(LOG_NORMAL, ("  Literal sequences are %sused",
-                         info->traits_used & TFLAG_LIT_SEQ ? "" : "not "));
-        LOG(LOG_NORMAL, (", length 1 sequences are %sused",
-                         info->traits_used & TFLAG_LEN1_SEQ ? "" : "not "));
-        LOG(LOG_NORMAL, (",\n  length 123 mirrors are %sused",
-                         info->traits_used & TFLAG_LEN0123_SEQ_MIRRORS ?
-                         "" : "not "));
-        LOG(LOG_NORMAL, (", max length used is %d",
-                         info->max_len));
-        LOG(LOG_NORMAL, (" and\n  the safety offset is %d.\n",
-                         info->needed_safety_offset));
+    struct io_bufs io;
+    int write_location;
+};
+
+static
+void generic(const char *appl,
+             struct common_flags *flags,
+             print_usage_f *print_usage,
+             struct buf *noread_in,
+             int decrunch_mode,
+             int located_mode,
+             int infilec, char *infilev[])
+{
+    struct buf name_buf = STATIC_BUF_INIT;
+    struct buf enc_buf = STATIC_BUF_INIT;
+
+    struct vec entries = STATIC_VEC_INIT(sizeof(struct io_bufs_located));
+    struct crunch_options *options = flags->options;
+    int c;
+
+    if (options->output_header == 0)
+    {
+        if (decrunch_mode)
+        {
+            LOG(LOG_ERROR, ("Error: Can't combine -E and -d.\n"));
+            print_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+            exit(1);
+        }
+        if (infilec == 0)
+        {
+            LOG(LOG_ERROR, ("Error: no input files to process.\n"));
+            print_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+            exit(1);
+        }
+    }
+    else if (infilec != 1)
+    {
+        LOG(LOG_ERROR, ("Error: exactly one input file must be given.\n"));
+        print_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+        exit(1);
+    }
+    else if (located_mode && decrunch_mode)
+    {
+        LOG(LOG_ERROR, ("Error: Can't combine located mode and -d.\n"));
+        print_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+        exit(1);
+    }
+
+    for (c = 0; c < infilec; ++c)
+    {
+        struct io_bufs_located *io = vec_push(&entries, NULL);
+        struct buf *inbuf = &io->io.in;
+        struct buf *outbuf = &io->io.out;
+        buf_init(inbuf);
+        buf_init(outbuf);
+        io->write_location = -1;
+
+        if (located_mode)
+        {
+            io->io.in_off = do_load(infilev[c], inbuf);
+            io->write_location = io->io.in_off;
+            if (options->direction_forward == 0)
+            {
+                io->write_location += buf_size(inbuf);
+            }
+        }
+        else
+        {
+            io->io.in_off = 0;
+            load_plain_file(infilev[c], inbuf);
+            LOG(LOG_BRIEF, (" Reading %d bytes from \"%s\".\n",
+                            buf_size(inbuf), infilev[c]));
+        }
+
+        if(decrunch_mode && options->write_reverse)
+        {
+            reverse_buffer(buf_data(inbuf), buf_size(inbuf));
+        }
+    }
+
+    if(decrunch_mode)
+    {
+        int inlen;
+        int outlen;
+        struct decrunch_options dopts;
+        struct io_bufs_located *io = vec_get(&entries, 0);
+        struct buf *inbuf = &io->io.in;
+        int in_off = io->io.in_off;
+        struct buf *outbuf = &io->io.out;
+
+        dopts.direction_forward = options->direction_forward;
+        dopts.write_reverse = options->write_reverse;
+        dopts.flags_proto = options->flags_proto;
+        dopts.imported_encoding = options->imported_encoding;
+
+        inlen = buf_size(inbuf);
+        decrunch(LOG_NORMAL, inbuf, in_off, outbuf, &dopts);
+
+        outlen = buf_size(outbuf);
+        LOG(LOG_BRIEF, (" Decrunched data expanded %d bytes (%0.2f%%)\n",
+                        outlen - inlen, 100.0 * (outlen - inlen) / inlen));
+    }
+    else
+    {
+        struct crunch_info info;
+        crunch_multi(&entries, noread_in, &enc_buf, options, &info);
+
+        print_crunch_info(LOG_NORMAL, &info);
+    }
+    for (c = 0; c < infilec; ++c)
+    {
+        struct io_bufs_located *io = vec_get(&entries, c);
+        struct buf *inbuf = &io->io.in;
+        struct buf *outbuf = &io->io.out;
+        const char *p;
+
+        if (io->write_location != -1)
+        {
+            if (options->direction_forward == 0)
+            {
+                /* append the write location of decrunching */
+                unsigned char *p = buf_insert(outbuf, -1, NULL, 2);
+                p[0] = io->write_location & 255;
+                p[1] = io->write_location >> 8;
+            }
+            else
+            {
+                /* prepend the write location of decrunching */
+                unsigned char *p = buf_insert(outbuf, 0, NULL, 2);
+                p[0] = io->write_location >> 8;
+                p[1] = io->write_location & 255;
+            }
+        }
+
+        if(!decrunch_mode && options->write_reverse)
+        {
+            reverse_buffer(buf_data(outbuf), buf_size(outbuf));
+        }
+
+        p = flags->outfile;
+        if (options->output_header == 0)
+        {
+            buf_clear(&name_buf);
+            buf_printf(&name_buf, "%s.%02d", flags->outfile, c);
+            p = buf_data(&name_buf);
+        }
+        LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
+                        buf_size(outbuf), p));
+        write_file(p, outbuf);
+
+        buf_free(outbuf);
+        buf_free(inbuf);
+    }
+
+    if (options->output_header == 0)
+    {
+        if(options->write_reverse)
+        {
+            reverse_buffer(buf_data(&enc_buf), buf_size(&enc_buf));
+        }
+        LOG(LOG_BRIEF, (" Writing encoding to \"%s\".\n", flags->outfile));
+        write_file(flags->outfile, &enc_buf);
+    }
+    buf_free(&enc_buf);
+    buf_free(&name_buf);
+    vec_free(&entries, NULL);
 }
 
 static
 void level(const char *appl, int argc, char *argv[])
 {
     char flags_arr[64];
-    int forward_mode = 0;
-    struct crunch_info total = STATIC_CRUNCH_INFO_INIT;
     int c;
     int infilec;
     char **infilev;
+    struct buf noread = STATIC_BUF_INIT, *noreadp = NULL;
 
-    struct crunch_options options[1] = { CRUNCH_OPTIONS_DEFAULT };
-    struct common_flags flags[1] = {{NULL, DEFAULT_OUTFILE}};
+    struct crunch_options options = CRUNCH_OPTIONS_DEFAULT;
+    struct common_flags flags = {NULL, DEFAULT_OUTFILE};
 
-    struct membuf in[1];
-    struct membuf out[1];
-
-    options->flags_notrait = TFLAG_LEN0123_SEQ_MIRRORS;
-    flags->options = options;
+    options.flags_notrait = TFLAG_LEN0123_SEQ_MIRRORS;
+    flags.options = &options;
+    options.write_reverse = 1;
 
     LOG(LOG_DUMP, ("flagind %d\n", flagind));
     sprintf(flags_arr, "f%s", CRUNCH_FLAGS);
@@ -478,99 +632,127 @@ void level(const char *appl, int argc, char *argv[])
         switch (c)
         {
         case 'f':
-            forward_mode = 1;
+            options.direction_forward = 1;
+            options.write_reverse = 0;
             break;
         default:
-            handle_crunch_flags(c, flagarg, print_level_usage, appl, flags);
+            handle_crunch_flags(c, flagarg, print_level_usage, appl, &flags);
         }
     }
 
-    membuf_init(in);
-    membuf_init(out);
+
+    if (options.noread_filename != NULL)
+    {
+        struct load_info info;
+        unsigned char *p =
+            memset(buf_append(&noread, NULL, 65536), 0, 65536);
+        load_located(options.noread_filename, p, &info);
+        noreadp = &noread;
+    }
+
 
     infilev = argv + flagind;
     infilec = argc - flagind;
 
-    if (infilec == 0)
+    if (options.output_header == 0)
     {
-        LOG(LOG_ERROR, ("Error: no input files to process.\n"));
-        print_level_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
-        exit(1);
+        generic(appl,
+                &flags,
+                print_level_usage,
+                noreadp,
+                0,
+                1,
+                infilec, infilev);
+    }
+    else
+    {
+        struct crunch_info total = STATIC_CRUNCH_INFO_INIT;
+        struct buf in;
+        struct buf out;
+
+        if (infilec == 0)
+        {
+            LOG(LOG_ERROR, ("Error: no input files to process.\n"));
+            print_level_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+            exit(1);
+        }
+
+        buf_init(&in);
+        buf_init(&out);
+
+        /* append the files instead of merging them */
+        for(c = 0; c < infilec; ++c)
+        {
+            struct crunch_info info;
+            int in_load;
+            int in_len;
+            int out_pos;
+            out_pos = buf_size(&out);
+
+            in_load = do_load(infilev[c], &in);
+            in_len = buf_size(&in);
+
+            if(options.direction_forward)
+            {
+                /* append the starting address of decrunching */
+                buf_append_char(&out, in_load >> 8);
+                buf_append_char(&out, in_load & 255);
+            }
+
+            crunch(&in, in_load, noreadp, &out, &options, &info);
+
+            if(!options.direction_forward)
+            {
+                /* append the starting address of decrunching */
+                buf_append_char(&out, (in_load + in_len) & 255);
+                buf_append_char(&out, (in_load + in_len) >> 8);
+
+                /* reverse the just appended segment of the out buffer */
+                reverse_buffer((char*)buf_data(&out) + out_pos,
+                               buf_size(&out) - out_pos);
+            }
+
+            total.traits_used |= info.traits_used;
+            if (info.max_len > total.max_len)
+            {
+                total.max_len = info.max_len;
+            }
+            if(info.needed_safety_offset > total.needed_safety_offset)
+            {
+                total.needed_safety_offset = info.needed_safety_offset;
+            }
+        }
+
+        print_crunch_info(LOG_NORMAL, &total);
+
+        LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
+                        buf_size(&out), flags.outfile));
+        write_file(flags.outfile, &out);
+
+        buf_free(&out);
+        buf_free(&in);
     }
 
-    /* append the files instead of merging them */
-    for(c = 0; c < infilec; ++c)
-    {
-        struct crunch_info info;
-        int in_load;
-        int in_len;
-        int out_pos;
-        out_pos = membuf_memlen(out);
-
-        in_load = do_load(infilev[c], in);
-        in_len = membuf_memlen(in);
-
-        if(forward_mode)
-        {
-            /* append the starting address of decrunching */
-            membuf_append_char(out, in_load >> 8);
-            membuf_append_char(out, in_load & 255);
-
-            crunch(in, out, options, &info);
-        }
-        else
-        {
-            crunch_backwards(in, out, options, &info);
-
-            /* append the starting address of decrunching */
-            membuf_append_char(out, (in_load + in_len) & 255);
-            membuf_append_char(out, (in_load + in_len) >> 8);
-
-            /* reverse the just appended segment of the out buffer */
-            reverse_buffer((char*)membuf_get(out) + out_pos,
-                           membuf_memlen(out) - out_pos);
-        }
-
-        total.traits_used |= info.traits_used;
-        if (info.max_len > total.max_len)
-        {
-            total.max_len = info.max_len;
-        }
-        if(info.needed_safety_offset > total.needed_safety_offset)
-        {
-            total.needed_safety_offset = info.needed_safety_offset;
-        }
-    }
-
-    output_crunch_info(&total);
-
-    LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
-                    membuf_memlen(out), flags->outfile));
-    write_file(flags->outfile, out);
-
-    membuf_free(out);
-    membuf_free(in);
+    buf_free(&noread);
 }
 
 static
 void mem(const char *appl, int argc, char *argv[])
 {
     char flags_arr[64];
-    int forward_mode = 0;
     int load_addr = -1;
+    int load_addr_given = 0;
     int prepend_load_addr = 1;
     int c;
     int infilec;
     char **infilev;
+    struct buf noread = STATIC_BUF_INIT, *noreadp = NULL;
 
-    struct crunch_options options[1] = { CRUNCH_OPTIONS_DEFAULT };
-    struct common_flags flags[1] = {{NULL, DEFAULT_OUTFILE}};
+    struct crunch_options options = CRUNCH_OPTIONS_DEFAULT;
+    struct common_flags flags = {NULL, DEFAULT_OUTFILE};
 
-    struct membuf in[1];
-    struct membuf out[1];
-
-    options->flags_notrait = TFLAG_LEN0123_SEQ_MIRRORS;
-    flags->options = options;
+    options.flags_notrait = TFLAG_LEN0123_SEQ_MIRRORS;
+    flags.options = &options;
 
     LOG(LOG_DUMP, ("flagind %d\n", flagind));
     sprintf(flags_arr, "fl:%s", CRUNCH_FLAGS);
@@ -580,14 +762,19 @@ void mem(const char *appl, int argc, char *argv[])
         switch(c)
         {
         case 'f':
-            forward_mode = 1;
+            options.direction_forward = 1;
             break;
         case 'l':
+            load_addr_given = 1;
             if(strcmp(flagarg, "none") == 0)
             {
                 prepend_load_addr = 0;
             }
-            else if(str_to_int(flagarg, &load_addr) != 0 ||
+            else if(strcmp(flagarg, "auto") == 0)
+            {
+                load_addr = -1;
+            }
+            else if(str_to_int(flagarg, &load_addr, NULL) != 0 ||
                     load_addr < 0 || load_addr >= 65536)
             {
                 LOG(LOG_ERROR,
@@ -598,60 +785,86 @@ void mem(const char *appl, int argc, char *argv[])
             }
             break;
         default:
-            handle_crunch_flags(c, flagarg, print_mem_usage, appl, flags);
+            handle_crunch_flags(c, flagarg, print_mem_usage, appl, &flags);
         }
     }
 
-    options->flags_notrait |= TFLAG_LEN0123_SEQ_MIRRORS;
-
-    membuf_init(in);
-    membuf_init(out);
+    if (options.noread_filename != NULL)
+    {
+        struct load_info info;
+        unsigned char *p =
+            memset(buf_append(&noread, NULL, 65536), 0, 65536);
+        load_located(options.noread_filename, p, &info);
+        noreadp = &noread;
+    }
 
     infilev = argv + flagind;
     infilec = argc - flagind;
 
-    if (infilec == 0)
+    if (options.output_header == 0)
     {
-        LOG(LOG_ERROR, ("Error: no input files to process.\n"));
-        print_mem_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
-        exit(1);
-    }
+        if (load_addr_given && prepend_load_addr)
+        {
+            LOG(LOG_ERROR, ("Error: -E implies -lnone and can't be "
+                            "combined with a load address.\n"));
+            print_mem_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+            exit(1);
+        }
 
+        generic(appl,
+                &flags,
+                print_mem_usage,
+                noreadp,
+                0,
+                1,
+                infilec, infilev);
+    }
+    else
     {
+        struct buf in;
+        struct buf out;
         struct crunch_info info;
         int in_load;
         int in_len;
         int safety;
 
-        in_load = do_loads(infilec, infilev, in, -1, -1, 0, NULL, NULL, NULL);
-        in_len = membuf_memlen(in);
+        if (infilec == 0)
+        {
+            LOG(LOG_ERROR, ("Error: no input files to process.\n"));
+            print_mem_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+            exit(1);
+        }
 
-        LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.",
+        buf_init(&in);
+        buf_init(&out);
+
+        in_load = do_loads(infilec, infilev, &in, -1, -1, 0, NULL, NULL, NULL);
+        in_len = buf_size(&in);
+
+        LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.\n",
                          in_load, in_load + in_len));
 
         /* make room for load addr */
         if(prepend_load_addr)
         {
-            membuf_append(out, NULL, 2);
+            buf_append(&out, NULL, 2);
         }
 
-        if(forward_mode)
+        if(options.direction_forward)
         {
             /* append the in_loading address of decrunching */
-            membuf_append_char(out, in_load >> 8);
-            membuf_append_char(out, in_load & 255);
-
-            crunch(in, out, options, &info);
-            safety = info.needed_safety_offset;
+            buf_append_char(&out, in_load >> 8);
+            buf_append_char(&out, in_load & 255);
         }
-        else
-        {
-            crunch_backwards(in, out, options, &info);
-            safety = info.needed_safety_offset;
 
+        crunch(&in, in_load, noreadp, &out, &options, &info);
+        safety = info.needed_safety_offset;
+
+        if(!options.direction_forward)
+        {
             /* append the in_loading address of decrunching */
-            membuf_append_char(out, (in_load + in_len) & 255);
-            membuf_append_char(out, (in_load + in_len) >> 8);
+            buf_append_char(&out, (in_load + in_len) & 255);
+            buf_append_char(&out, (in_load + in_len) >> 8);
         }
 
         /* prepend load addr */
@@ -662,45 +875,47 @@ void mem(const char *appl, int argc, char *argv[])
             {
                 /* auto load addr specified */
                 load_addr = in_load;
-                if(forward_mode)
+                if(options.direction_forward)
                 {
-                    load_addr += in_len + safety - membuf_memlen(out) + 2;
+                    load_addr += in_len + safety - buf_size(&out) + 2;
                 }
                 else
                 {
                     load_addr -= safety;
                 }
             }
-            p = membuf_get(out);
+            p = buf_data(&out);
             p[0] = load_addr & 255;
             p[1] = load_addr >> 8;
             LOG(LOG_NORMAL, (" The load address is $%04X - $%04X.\n",
-                             load_addr, load_addr + membuf_memlen(out) - 2));
+                             load_addr, load_addr + buf_size(&out) - 2));
         }
         else
         {
             LOG(LOG_NORMAL, (" No load address, data length is $%04X.\n",
-                             membuf_memlen(out)));
+                             buf_size(&out)));
         }
 
-        output_crunch_info(&info);
-    }
+        print_crunch_info(LOG_NORMAL, &info);
 
-    if (prepend_load_addr)
-    {
-        LOG(LOG_BRIEF, (" Writing \"%s\" as prg, saving from $%04X to $%04X.\n",
-                        flags->outfile, load_addr,
-                        load_addr + membuf_memlen(out) - 2));
-    }
-    else
-    {
-        LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
-                        membuf_memlen(out), flags->outfile));
-    }
-    write_file(flags->outfile, out);
+        if (prepend_load_addr)
+        {
+            LOG(LOG_BRIEF,
+                (" Writing \"%s\" as prg, saving from $%04X to $%04X.\n",
+                 flags.outfile, load_addr,
+                 load_addr + buf_size(&out) - 2));
+        }
+        else
+        {
+            LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
+                            buf_size(&out), flags.outfile));
+        }
+        write_file(flags.outfile, &out);
 
-    membuf_free(out);
-    membuf_free(in);
+        buf_free(&out);
+        buf_free(&in);
+    }
+    buf_free(&noread);
 }
 
 static
@@ -742,7 +957,7 @@ get_target_info(int target)
 static void do_effect(const char *appl, int no_effect, const char *fast,
                       const char *slow)
 {
-    struct membuf *fx = NULL;
+    struct buf *fx = NULL;
 
     if(no_effect + (fast != NULL) + (slow != NULL) > 1)
     {
@@ -758,7 +973,7 @@ static void do_effect(const char *appl, int no_effect, const char *fast,
     else if(fast != NULL)
     {
         int value;
-        if(str_to_int(fast, &value) == 0)
+        if(str_to_int(fast, &value, NULL) == 0)
         {
             if(value == 1) set_initial_symbol("i_effect", 1);
             else if(value == 2) set_initial_symbol("i_effect", 2);
@@ -776,14 +991,14 @@ static void do_effect(const char *appl, int no_effect, const char *fast,
         {
             set_initial_symbol("i_effect_custom", 1);
             fx = new_initial_named_buffer("effect_custom");
-            membuf_append(fx, fast, strlen(fast));
+            buf_append(fx, fast, strlen(fast));
         }
         set_initial_symbol("i_effect_speed", 1);
     }
     else if(slow != NULL)
     {
         int value;
-        if(str_to_int(slow, &value) == 0)
+        if(str_to_int(slow, &value, NULL) == 0)
         {
             LOG(LOG_ERROR, ("Error: Can't use shorthand for -X flag.\n"));
             print_sfx_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
@@ -793,7 +1008,7 @@ static void do_effect(const char *appl, int no_effect, const char *fast,
         {
             set_initial_symbol("i_effect_custom", 1);
             fx = new_initial_named_buffer("effect_custom");
-            membuf_append(fx, slow, strlen(slow));
+            buf_append(fx, slow, strlen(slow));
             set_initial_symbol("i_effect_speed", 0);
         }
     }
@@ -828,17 +1043,18 @@ void sfx(const char *appl, int argc, char *argv[])
 
     struct crunch_info info;
 
-    struct crunch_options options[1] = { CRUNCH_OPTIONS_DEFAULT };
-    struct common_flags flags[1] = {{NULL, DEFAULT_OUTFILE}};
+    struct crunch_options options = CRUNCH_OPTIONS_DEFAULT;
+    struct common_flags flags = {NULL, DEFAULT_OUTFILE};
     const struct target_info *targetp;
 
-    struct membuf buf1[1];
+    struct buf buf1;
 
-    struct membuf *in;
-    struct membuf *out;
+    struct buf *in;
+    struct buf *out;
 
-    options->flags_proto = PFLAG_BITS_ORDER_BE | PFLAG_BITS_COPY_GT_7;
-    flags->options = options;
+    options.flags_proto = PFLAG_BITS_ORDER_BE | PFLAG_BITS_COPY_GT_7 |
+        PFLAG_REUSE_OFFSET;
+    flags.options = &options;
 
     if(argc <= 1)
     {
@@ -864,7 +1080,7 @@ void sfx(const char *appl, int argc, char *argv[])
             p = strtok(NULL, ",");
             /* look for an optional basic start address */
             if(p == NULL) break;
-            if(str_to_int(p, &basic_txt_start) != 0)
+            if(str_to_int(p, &basic_txt_start, NULL) != 0)
             {
                 LOG(LOG_ERROR,
                     ("Error: invalid value for the start of basic text "
@@ -880,7 +1096,7 @@ void sfx(const char *appl, int argc, char *argv[])
             p = strtok(NULL, ",");
             /* look for an optional basic start address */
             if(p == NULL) break;
-            if(str_to_int(p, &basic_txt_start) != 0)
+            if(str_to_int(p, &basic_txt_start, NULL) != 0)
             {
                 LOG(LOG_ERROR,
                     ("Error: invalid value for the start of basic text "
@@ -891,7 +1107,7 @@ void sfx(const char *appl, int argc, char *argv[])
             p = strtok(NULL, ",");
             /* look for an optional basic end address */
             if(p == NULL) break;
-            if(str_to_int(p, &basic_var_start) != 0)
+            if(str_to_int(p, &basic_var_start, NULL) != 0)
             {
                 LOG(LOG_ERROR,
                     ("Error: invalid value for the start of basic "
@@ -902,7 +1118,7 @@ void sfx(const char *appl, int argc, char *argv[])
             p = strtok(NULL, ",");
             /* look for an optional highest address used by basic */
             if(p == NULL) break;
-            if(str_to_int(p, &basic_highest_addr) != 0)
+            if(str_to_int(p, &basic_highest_addr, NULL) != 0)
             {
                 LOG(LOG_ERROR,
                     ("Error: invalid value for the highest address used "
@@ -915,7 +1131,7 @@ void sfx(const char *appl, int argc, char *argv[])
         {
             entry_addr = -3;
         }
-        else if(str_to_int(p, &entry_addr) != 0 ||
+        else if(str_to_int(p, &entry_addr, NULL) != 0 ||
                 entry_addr < 0 || entry_addr >= 65536)
         {
             /* we got an address we should jmp to. */
@@ -937,7 +1153,7 @@ void sfx(const char *appl, int argc, char *argv[])
         switch(c)
         {
         case 't':
-            if (str_to_int(flagarg, &decr_target) != 0 ||
+            if (str_to_int(flagarg, &decr_target, NULL) != 0 ||
                 get_target_info(decr_target) == NULL)
             {
                 LOG(LOG_ERROR,
@@ -970,7 +1186,7 @@ void sfx(const char *appl, int argc, char *argv[])
             if(p != NULL)
             {
                 int value;
-                if(str_to_int(p + 1, &value) != 0)
+                if(str_to_int(p + 1, &value, NULL) != 0)
                 {
                     LOG(LOG_ERROR, ("Error: invalid value for -D "
                                     "<symbol>[=<value>] option.\n"));
@@ -991,7 +1207,7 @@ void sfx(const char *appl, int argc, char *argv[])
             }
             break;
         default:
-            handle_crunch_flags(c, flagarg, print_sfx_usage, appl, flags);
+            handle_crunch_flags(c, flagarg, print_sfx_usage, appl, &flags);
         }
     }
 
@@ -999,46 +1215,50 @@ void sfx(const char *appl, int argc, char *argv[])
         int required = PFLAG_BITS_ORDER_BE | PFLAG_BITS_COPY_GT_7;
         int unsupported = PFLAG_BITS_ALIGN_START | PFLAG_IMPL_1LITERAL;
 
-        if ((options->flags_proto & required) != required)
+        if ((options.flags_proto & required) != required)
         {
             LOG(LOG_ERROR,
                 ("Warning: -P bits " STR(PBIT_BITS_ORDER_BE)
                  " and " STR(PBIT_BITS_COPY_GT_7)
                  " are required by sfx, setting them.\n"));
-            options->flags_proto |= required;
+            options.flags_proto |= required;
         }
-        if ((options->flags_proto & unsupported) != 0)
+        if ((options.flags_proto & unsupported) != 0)
         {
             LOG(LOG_ERROR,
                 ("Warning: -P bits " STR(PBIT_BITS_ALIGN_START)
                  " and " STR(PBIT_IMPL_1LITERAL)
                  " are not supported by sfx, clearing them.\n"));
-            options->flags_proto &= ~unsupported;
+            options.flags_proto &= ~unsupported;
         }
-        options->flags_notrait |= TFLAG_LEN0123_SEQ_MIRRORS;
+        options.flags_notrait |= TFLAG_LEN0123_SEQ_MIRRORS;
     }
 
-    if (options->flags_proto & PFLAG_4_OFFSET_TABLES)
+    if (options.flags_proto & PFLAG_4_OFFSET_TABLES)
     {
         set_initial_symbol("i_fourth_offset_table", 1);
+    }
+    if (options.flags_proto & PFLAG_REUSE_OFFSET)
+    {
+        set_initial_symbol("i_reuse_offset", 1);
     }
 
     do_effect(appl, no_effect, fast, slow);
     if(enter_custom != NULL)
     {
         set_initial_symbol("i_enter_custom", 1);
-        membuf_append(new_initial_named_buffer("enter_custom"),
-                      enter_custom, strlen(enter_custom));
+        buf_append(new_initial_named_buffer("enter_custom"),
+                   enter_custom, strlen(enter_custom));
     }
     if(exit_custom != NULL)
     {
         set_initial_symbol("i_exit_custom", 1);
-        membuf_append(new_initial_named_buffer("exit_custom"),
-                      exit_custom, strlen(exit_custom));
+        buf_append(new_initial_named_buffer("exit_custom"),
+                   exit_custom, strlen(exit_custom));
     }
 
-    membuf_init(buf1);
-    in = buf1;
+    buf_init(&buf1);
+    in = &buf1;
     out = new_initial_named_buffer("crunched_data");
 
     infilev = argv + flagind + 1;
@@ -1073,6 +1293,16 @@ void sfx(const char *appl, int argc, char *argv[])
         int basic_start;
         int mode_bin = 0;
         enum file_type type;
+        struct buf noread = STATIC_BUF_INIT, *noreadp = NULL;
+
+        if (options.noread_filename != NULL)
+        {
+            struct load_info info;
+            unsigned char *p =
+                memset(buf_append(&noread, NULL, 65536), 0, 65536);
+            load_located(options.noread_filename, p, &info);
+            noreadp = &noread;
+        }
 
         entry_addrp = NULL;
         basic_var_startp = NULL;
@@ -1137,7 +1367,7 @@ void sfx(const char *appl, int argc, char *argv[])
                 set_initial_symbol_soft("i_a2_file_type", 0xff);
             }
         }
-        in_len = membuf_memlen(in);
+        in_len = buf_size(in);
 
         if(in_load + in_len > targetp->end_of_ram)
         {
@@ -1149,7 +1379,7 @@ void sfx(const char *appl, int argc, char *argv[])
             exit(1);
         }
 
-        LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.",
+        LOG(LOG_NORMAL, (" Crunching from $%04X to $%04X.\n",
                          in_load, in_load + in_len));
 
         if(decr_target == 20 || decr_target == 52)
@@ -1172,7 +1402,7 @@ void sfx(const char *appl, int argc, char *argv[])
                 int diff = 0x1000 - in_load;
                 in_load += diff;
                 in_len -= diff;
-                membuf_trim(in, diff);
+                buf_remove(in, 0, diff);
                 LOG(LOG_WARNING,
                     ("Warning, trimming address interval to $%04X-$%04X.\n",
                      in_load, in_load + in_len));
@@ -1184,7 +1414,7 @@ void sfx(const char *appl, int argc, char *argv[])
                  * hole. We need to adjust the end. */
                 int diff = in_load + in_len - 0x0400;
                 in_len -= diff;
-                membuf_truncate(in, in_len);
+                buf_remove(in, in_len, -1);
                 LOG(LOG_WARNING,
                     ("Warning, trimming address interval to $%04X-$%04X.\n",
                      in_load, in_load + in_len));
@@ -1195,7 +1425,7 @@ void sfx(const char *appl, int argc, char *argv[])
                  * ends in RAM. */
                 int hi, lo;
                 char *p;
-                p = membuf_get(in);
+                p = buf_data(in);
                 for(hi = 0x04; hi < 0x10; hi += 0x01)
                 {
                     for(lo = 0; lo < 256; ++lo)
@@ -1210,25 +1440,27 @@ void sfx(const char *appl, int argc, char *argv[])
         }
 
         /* make room for load addr */
-        membuf_append(out, NULL, 2);
+        buf_append(out, NULL, 2);
 
-        crunch_backwards(in, out, options, &info);
+        crunch(in, in_load, noreadp, out, &options, &info);
 
-        output_crunch_info(&info);
+        print_crunch_info(LOG_NORMAL, &info);
 
         safety = info.needed_safety_offset;
 
         /* append the in_loading address of decrunching */
-        membuf_append_char(out, (in_load + in_len) & 255);
-        membuf_append_char(out, (in_load + in_len) >> 8);
+        buf_append_char(out, (in_load + in_len) & 255);
+        buf_append_char(out, (in_load + in_len) >> 8);
 
         /* prepend load addr */
         {
             char *p;
-            p = membuf_get(out);
+            p = buf_data(out);
             p[0] = (in_load - safety) & 255;
             p[1] = (in_load - safety) >> 8;
         }
+
+        buf_free(&noread);
     }
 
     LOG(LOG_NORMAL, (" Target is self-decrunching %s executable",
@@ -1253,14 +1485,14 @@ void sfx(const char *appl, int argc, char *argv[])
     {
         /* add decruncher */
         struct decrunch_options dopts = DECRUNCH_OPTIONS_DEFAULT;
-        struct membuf source;
+        struct buf source;
 
-        membuf_init(&source);
-        decrunch(LOG_DEBUG, sfxdecr, &source, &dopts);
+        buf_init(&source);
+        decrunch(LOG_DEBUG, &sfxdecr, 0, &source, &dopts);
 
         in = out;
-        out = buf1;
-        membuf_clear(out);
+        out = &buf1;
+        buf_clear(out);
 
         set_initial_symbol("r_start_addr", entry_addr);
         /*initial_symbol_dump( LOG_NORMAL, "r_start_addr");*/
@@ -1318,13 +1550,13 @@ void sfx(const char *appl, int argc, char *argv[])
             i32 highest_addr_out;
             i32 i_table_addr;
             i32 stage3end, zp_len_lo, zp_len_hi, zp_src_lo, zp_bits_hi;
-            i32 i_effect;
+            i32 zp_ro_state, i_effect;
             i32 i_ram_enter, i_ram_during, i_ram_exit;
             i32 i_irq_enter, i_irq_during, i_irq_exit;
             i32 i_nmi_enter, i_nmi_during, i_nmi_exit;
             i32 c_effect_color;
 
-            if (options->flags_proto & PFLAG_4_OFFSET_TABLES)
+            if (options.flags_proto & PFLAG_4_OFFSET_TABLES)
             {
                 table_size = (16+4+16+16+16)*3;
             }
@@ -1339,13 +1571,26 @@ void sfx(const char *appl, int argc, char *argv[])
             resolve_symbol("zp_len_hi", NULL, &zp_len_hi);
             resolve_symbol("zp_src_lo", NULL, &zp_src_lo);
             resolve_symbol("zp_bits_hi", NULL, &zp_bits_hi);
+            if (options.flags_proto & PFLAG_REUSE_OFFSET)
+            {
+                resolve_symbol("zp_ro_state", NULL, &zp_ro_state);
+            }
             resolve_symbol("i_effect2", NULL, &i_effect);
             resolve_symbol("i_irq_enter", NULL, &i_irq_enter);
             resolve_symbol("i_irq_during", NULL, &i_irq_during);
             resolve_symbol("i_irq_exit", NULL, &i_irq_exit);
 
+            if (stage3end > 0x1f2)
+            {
+                LOG(LOG_ERROR,
+                    ("ERROR: The generated decruncher is too b"
+                     "ig. It will be overwritten by its own\n"
+                     "stack usage. Please use options or disab"
+                     "le features to make it smaller.\n."));
+                exit(1);
+            }
             LOG(LOG_BRIEF, (" Writing \"%s\" as %s, saving from "
-                            "$%04X to $%04X.\n", flags->outfile,
+                            "$%04X to $%04X.\n", flags.outfile,
                             targetp->outformat, lowest_addr_out,
                             highest_addr_out));
 
@@ -1358,8 +1603,19 @@ void sfx(const char *appl, int argc, char *argv[])
                              i_table_addr, i_table_addr + table_size));
             LOG(LOG_NORMAL, (" Decruncher      | $00FD| $%04X| and ",
                              stage3end));
-            LOG(LOG_NORMAL, ("$%02X,$%02X,$%02X,$%02X,$%02X\n", zp_bits_hi,
-                             zp_len_lo, zp_len_hi, zp_src_lo, zp_src_lo + 1));
+            if (options.flags_proto & PFLAG_REUSE_OFFSET)
+            {
+                LOG(LOG_NORMAL,
+                    ("$%02X,$%02X,$%02X,$%02X,$%02X,$%02X\n", zp_bits_hi,
+                     zp_len_lo, zp_len_hi, zp_src_lo, zp_src_lo + 1,
+                     zp_ro_state));
+            }
+            else
+            {
+                LOG(LOG_NORMAL,
+                    ("$%02X,$%02X,$%02X,$%02X,$%02X\n", zp_bits_hi,
+                     zp_len_lo, zp_len_hi, zp_src_lo, zp_src_lo + 1));
+            }
             if(i_effect == 0 && !resolve_symbol("i_effect_custom", NULL, NULL))
             {
                 resolve_symbol("c_effect_color", NULL, &c_effect_color);
@@ -1392,11 +1648,11 @@ void sfx(const char *appl, int argc, char *argv[])
                 char *p;
                 int i;
                 /* write shadowing .inf file */
-                struct membuf name_buf = STATIC_MEMBUF_INIT;
-                membuf_printf(&name_buf, "%s.inf", flags->outfile);
-                p = membuf_get(&name_buf);
+                struct buf name_buf = STATIC_BUF_INIT;
+                buf_printf(&name_buf, "%s.inf", flags.outfile);
+                p = buf_data(&name_buf);
                 inf = fopen(p, "wb");
-                p[membuf_memlen(&name_buf) - 4] = '\0';
+                p[buf_size(&name_buf) - 4] = '\0';
                 for (i = 0; p[i] != '\0' && (i < 7 || (p[i] = '\0')); ++i)
                 {
                     p[i] = toupper(p[i]);
@@ -1405,16 +1661,16 @@ void sfx(const char *appl, int argc, char *argv[])
                 fprintf(inf, "$.%s %06X %06X %X", p,
                         lowest_addr_out | 0xff0000,
                         lowest_addr_out | 0xff0000,
-                        membuf_memlen(out));
+                        buf_size(out));
                 fclose(inf);
             }
         }
 
-        membuf_free(&source);
+        buf_free(&source);
     }
 
-    write_file(flags->outfile, out);
-    membuf_free(buf1);
+    write_file(flags.outfile, out);
+    buf_free(&buf1);
 
     parse_free();
 }
@@ -1424,16 +1680,15 @@ void raw(const char *appl, int argc, char *argv[])
 {
     char flags_arr[64];
     int decrunch_mode = 0;
-    int backwards_mode = 0;
-    int reverse_mode = 0;
     int c, infilec;
     char **infilev;
+    struct buf noread = STATIC_BUF_INIT, *noreadp = NULL;
 
-    static struct crunch_options options[1] = { CRUNCH_OPTIONS_DEFAULT };
-    struct common_flags flags[1] = { {options, DEFAULT_OUTFILE} };
+    struct crunch_options options = CRUNCH_OPTIONS_DEFAULT;
+    struct common_flags flags = {NULL, DEFAULT_OUTFILE};
 
-    struct membuf inbuf[1];
-    struct membuf outbuf[1];
+    flags.options = &options;
+    options.direction_forward = 1;
 
     LOG(LOG_DUMP, ("flagind %d\n", flagind));
     sprintf(flags_arr, "brd%s", CRUNCH_FLAGS);
@@ -1443,102 +1698,54 @@ void raw(const char *appl, int argc, char *argv[])
         switch (c)
         {
         case 'b':
-            backwards_mode = 1;
+            options.direction_forward = 0;
             break;
         case 'r':
-            reverse_mode = 1;
+            options.write_reverse = 1;
             break;
         case 'd':
             decrunch_mode = 1;
             break;
         default:
-            handle_crunch_flags(c, flagarg, print_raw_usage, appl, flags);
+            handle_crunch_flags(c, flagarg, print_raw_usage, appl, &flags);
         }
+    }
+
+    if (options.noread_filename != NULL)
+    {
+        load_plain_file(options.noread_filename, &noread);
+        noreadp = &noread;
     }
 
     infilev = argv + flagind;
     infilec = argc - flagind;
 
-    if (infilec != 1)
-    {
-        LOG(LOG_ERROR, ("Error: exactly one input file must be given.\n"));
-        print_raw_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
-        exit(1);
-    }
+    generic(appl,
+            &flags,
+            print_raw_usage,
+            noreadp,
+            decrunch_mode,
+            0,
+            infilec, infilev);
 
-    membuf_init(inbuf);
-    membuf_init(outbuf);
-
-    load_plain_file(infilev[0], inbuf);
-    LOG(LOG_BRIEF, (" Reading %d bytes from \"%s\".\n",
-                    membuf_memlen(inbuf), infilev[0]));
-
-    if(decrunch_mode)
-    {
-        int inlen;
-        int outlen;
-        struct decrunch_options dopts;
-        dopts.direction = !backwards_mode;
-        dopts.flags_proto = options->flags_proto;
-
-        if(reverse_mode)
-        {
-            reverse_buffer(membuf_get(inbuf), membuf_memlen(inbuf));
-        }
-
-        inlen = membuf_memlen(inbuf);
-        decrunch(LOG_NORMAL, inbuf, outbuf, &dopts);
-
-        outlen = membuf_memlen(outbuf);
-        LOG(LOG_BRIEF, (" Decrunched data expanded %d bytes (%0.2f%%)\n",
-                        outlen - inlen, 100.0 * (outlen - inlen) / inlen));
-    }
-    else
-    {
-        struct crunch_info info;
-        if(backwards_mode)
-        {
-            crunch_backwards(inbuf, outbuf, options, &info);
-        }
-        else
-        {
-            crunch(inbuf, outbuf, options, &info);
-        }
-
-        output_crunch_info(&info);
-
-        if(reverse_mode)
-        {
-            reverse_buffer(membuf_get(outbuf), membuf_memlen(outbuf));
-        }
-    }
-
-    LOG(LOG_BRIEF, (" Writing %d bytes to \"%s\".\n",
-                    membuf_memlen(outbuf), flags->outfile));
-    write_file(flags->outfile, outbuf);
-
-    membuf_free(outbuf);
-    membuf_free(inbuf);
+    buf_free(&noread);
 }
 
 static
 void desfx(const char *appl, int argc, char *argv[])
 {
+    struct perf_ctx perf = STATIC_PERF_INIT;
+    struct buf buf = STATIC_BUF_INIT;
     char flags_arr[64];
-    struct load_info info[1];
-    struct membuf mem[1];
-    const char *outfile = DEFAULT_OUTFILE;
-    int c, infilec;
+    int i, c, infilec;
     char **infilev;
-    u8 *p;
-    int start;
-    int end;
-    u32 cycles;
-    int cookedend;
     int entry = -1;
+    int stat = 0;
+
+    const char *outfile = DEFAULT_OUTFILE;
 
     LOG(LOG_DUMP, ("flagind %d\n", flagind));
-    sprintf(flags_arr, "e:%s", BASE_FLAGS);
+    sprintf(flags_arr, "e:S%s", BASE_FLAGS);
     while ((c = getflag(argc, argv, flags_arr)) != -1)
     {
         LOG(LOG_DUMP, (" flagind %d flagopt '%c'\n", flagind, c));
@@ -1549,7 +1756,7 @@ void desfx(const char *appl, int argc, char *argv[])
             {
                 entry = -2;
             }
-            else if(str_to_int(flagarg, &entry) != 0 ||
+            else if(str_to_int(flagarg, &entry, NULL) != 0 ||
                     entry < 0 || entry >= 65536)
             {
                 LOG(LOG_ERROR,("Error: invalid address for -e option, "
@@ -1557,6 +1764,9 @@ void desfx(const char *appl, int argc, char *argv[])
                 print_desfx_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
                 exit(1);
             }
+            break;
+        case 'S':
+            stat = 1;
             break;
         default:
             handle_base_flags(c, flagarg, print_desfx_usage, appl, &outfile);
@@ -1566,69 +1776,122 @@ void desfx(const char *appl, int argc, char *argv[])
     infilev = argv + flagind;
     infilec = argc - flagind;
 
-    if (infilec != 1)
+    if (stat == 0 && infilec != 1)
     {
-        LOG(LOG_ERROR, ("Error: exactly one input file must be given.\n"));
+        LOG(LOG_ERROR, ("Error: only one input file must be given.\n"));
+        print_desfx_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
+        exit(1);
+    }
+    else if (infilec < 1)
+    {
+        LOG(LOG_ERROR, ("Error: at least one input file must be given.\n"));
         print_desfx_usage(appl, LOG_NORMAL, DEFAULT_OUTFILE);
         exit(1);
     }
 
-    membuf_init(mem);
-    membuf_append(mem, NULL, 65536);
-
-    p = membuf_get(mem);
-
-    /* load file, don't care about tracking basic*/
-    info->basic_txt_start = -1;
-    load_located(infilev[0], p, info);
-
-    if(entry == -1)
+    for (i = 0; i < infilec; ++i)
     {
-        /* use detected address */
-        entry = info->run;
+        int entry1 = entry;
+        struct load_info info;
+        struct buf mem;
+        u8 *p;
+        int start;
+        int end;
+        u32 cycles;
+        int cookedend;
+        const char *n;
+
+        buf_init(&mem);
+        buf_append(&mem, NULL, 65536);
+
+        p = buf_data(&mem);
+
+        /* load file, don't care about tracking basic */
+        info.basic_txt_start = -1;
+        load_located(infilev[i], p, &info);
+
+        if(entry1 == -1)
+        {
+            /* use detected address */
+            entry1 = info.run;
+        }
+        else if(entry1 == -2)
+        {
+            /* use load address */
+            entry1 = info.start;
+        }
+
+        /* no start address from load */
+        if(entry1 == -1)
+        {
+            /* look for sys line */
+            entry1 = find_sys(p + info.start, -1, NULL);
+        }
+        if(entry1 == -1)
+        {
+            LOG(LOG_ERROR, ("Error, can't find entry1 point.\n"));
+            exit(1);
+        }
+
+        entry1 = decrunch_sfx(p, entry1, &start, &end, &cycles);
+
+        /* change 0x0 into 0x10000 */
+        cookedend = ((end - 1) & 0xffff) + 1;
+
+        if (stat != 0)
+        {
+            int inlen = info.end - info.start;
+            int outlen = end - start;
+            perf_add(&perf, infilev[i], inlen, outlen, cycles);
+        }
+        else
+        {
+            LOG(LOG_NORMAL,
+                (" Decrunch took %0.6f Mcycles, "
+                 "speed was %0.2f kB/Mc (%0.2f c/B).\n",
+                 (double)cycles / 1000000,
+                 1000 * (end - start) / (float)cycles,
+                 (float)cycles / (end - start)));
+        }
+        buf_remove(&mem, cookedend, -1);
+        buf_remove(&mem, 0, start);
+        buf_insert(&mem, 0, NULL, 2);
+
+        p = buf_data(&mem);
+        p[0] = start;
+        p[1] = start >> 8;
+
+        n = outfile;
+        if (stat != 0)
+        {
+            buf_clear(&buf);
+            buf_printf(&buf, "%s.%02d", outfile, i);
+            n = buf_data(&buf);
+        }
+
+        LOG(LOG_BRIEF, (" Writing \"%s\" as prg, saving from $%04X to $%04X, "
+                        "entry1 at $%04X.\n", n, start, cookedend, entry1));
+        write_file(n, &mem);
+
+        buf_free(&mem);
     }
-    else if(entry == -2)
-    {
-        /* use load address */
-        entry = info->start;
-    }
 
-    /* no start address from load */
-    if(entry == -1)
-    {
-        /* look for sys line */
-        entry = find_sys(p + info->start, -1, NULL);
-    }
-    if(entry == -1)
-    {
-        LOG(LOG_ERROR, ("Error, can't find entry point.\n"));
-        exit(1);
-    }
+    buf_clear(&buf);
+    perf_buf_print(&perf, &buf);
+    LOG(LOG_NORMAL, ("All files:\n%s", (char*)buf_data(&buf)));
 
-    entry = decrunch_sfx(p, entry, &start, &end, &cycles);
+    buf_clear(&buf);
+    perf_sort_size_cycles(&perf, 1);
+    perf_buf_print(&perf, &buf);
+    LOG(LOG_NORMAL, ("\nSorted on size:\n%s", (char*)buf_data(&buf)));
 
-    /* change 0x0 into 0x10000 */
-    cookedend = ((end - 1) & 0xffff) + 1;
+    buf_clear(&buf);
+    perf_sort_cycles_size(&perf, 1);
+    perf_buf_print(&perf, &buf);
+    LOG(LOG_NORMAL, ("\nSorted on cycles:\n%s", (char*)buf_data(&buf)));
 
-    LOG(LOG_NORMAL,
-        (" Decrunch took %0.6f Mcycles, speed was %0.2f kB/Mc (%0.2f c/B).\n",
-         (double)cycles / 1000000,
-         1000 * (end - start) / (float)cycles,
-         (float)cycles / (end - start)));
-
-    membuf_truncate(mem, cookedend);
-    membuf_trim(mem, start);
-    membuf_insert(mem, 0, NULL, 2);
-
-    p = membuf_get(mem);
-    p[0] = start;
-    p[1] = start >> 8;
-
-    LOG(LOG_BRIEF, (" Writing \"%s\" as prg, saving from $%04X to $%04X, "
-                    "entry at $%04X.\n", outfile, start, cookedend, entry));
-    write_file(outfile, mem);
-
-    membuf_free(mem);
+    buf_free(&buf);
+    perf_free(&perf);
 }
 
 int

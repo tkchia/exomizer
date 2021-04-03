@@ -80,7 +80,7 @@ bprg_trampoline_add(struct bprg_ctx *ctx,
                     int *start, int *var, int *end,
                     int flags)
 {
-    struct trampoline t[1];
+    struct trampoline t;
     int tmp;
     int endpos;
     int i;
@@ -91,29 +91,29 @@ bprg_trampoline_add(struct bprg_ctx *ctx,
         start = &tmp;
     }
 
-    t->init = 0;
-    t->start = *start;
+    t.init = 0;
+    t.start = *start;
 
     /* start */
-    t->size = 8;
+    t.size = 8;
 
     /* var */
-    t->size += 8;
+    t.size += 8;
 
     if(end != NULL)
     {
-        t->size += 8;
+        t.size += 8;
     }
-    t->size += 7;
+    t.size += 7;
     if(flags & TRAMPOLINE_FLAG_REGEN)
     {
-        t->size += 3;
+        t.size += 3;
     }
     if(flags & TRAMPOLINE_FLAG_C264_COLOR_REGEN)
     {
-        t->size += 3;
+        t.size += 3;
     }
-    bprg_lines_mutate(ctx, trampoline_cb_line_mutate, t);
+    bprg_lines_mutate(ctx, trampoline_cb_line_mutate, &t);
 
     endpos = ctx->start + ctx->len;
     if(var != NULL && endpos > *var)
@@ -125,7 +125,7 @@ bprg_trampoline_add(struct bprg_ctx *ctx,
         exit(1);
     }
     ctx->start = *start;
-    ctx->basic_start = ctx->start + t->size;
+    ctx->basic_start = ctx->start + t.size;
     ctx->len = endpos - ctx->start;
 
     i = ctx->start;

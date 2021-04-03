@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_CALLBACK
 #define ALREADY_INCLUDED_CALLBACK
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -34,4 +37,7 @@ typedef int cb_cmp(const void *a, const void *b);
 typedef void cb_free(void *a);
 typedef void cb_fprint(FILE *f, const void *a);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

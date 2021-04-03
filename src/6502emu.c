@@ -1015,7 +1015,7 @@ static struct inst_info ops[256] = {
 
 void next_inst(struct cpu_ctx *r)
 {
-    union inst_arg arg[1];
+    union inst_arg arg;
     int oldpc = r->pc;
     int op_code = MEM_ACCESS_READ(&r->mem, r->pc);
     struct inst_info *info = ops + op_code;
@@ -1028,7 +1028,7 @@ void next_inst(struct cpu_ctx *r)
     }
     LOG(LOG_DUMP, ("%08d, %02x %02x %02x %02x: ",
                    r->cycles, r->a, r->x, r->y, r->sp));
-    mode = info->mode->f(r, arg);
+    mode = info->mode->f(r, &arg);
 
     if(IS_LOGGABLE(LOG_DUMP))
     {
@@ -1060,7 +1060,7 @@ void next_inst(struct cpu_ctx *r)
             LOG(LOG_DUMP, (" "));
             if(mode == MODE_RELATIVE)
             {
-                LOG(LOG_DUMP, ("$%04x", r->pc + arg->rel.value));
+                LOG(LOG_DUMP, ("$%04x", r->pc + arg.rel.value));
             }
             else
             {
@@ -1075,11 +1075,11 @@ void next_inst(struct cpu_ctx *r)
             case MODE_ABSOLUTE:
                 break;
             default:
-                LOG(LOG_DUMP, (" ($%04x)", arg->ea.value));
+                LOG(LOG_DUMP, (" ($%04x)", arg.ea.value));
             }
         }
         LOG(LOG_DUMP, ("\n"));
     }
-    info->op->f(r, mode, arg);
+    info->op->f(r, mode, &arg);
     r->cycles += info->cycles;
 }

@@ -32,8 +32,8 @@
 #include <math.h>
 #include "log.h"
 #include "getflag.h"
-#include "membuf.h"
-#include "membuf_io.h"
+#include "buf.h"
+#include "buf_io.h"
 #include "exo_helper.h"
 #include "exo_util.h"
 
@@ -56,20 +56,19 @@ main(int argc, char *argv[])
 {
     char flags_arr[64];
     int decrunch_mode = 0;
-    int backwards_mode = 0;
-    int reverse_mode = 0;
     int c, infilec;
     char **infilev;
 
-    struct crunch_options options[1] = { CRUNCH_OPTIONS_DEFAULT };
-    struct common_flags flags[1] = { {NULL, DEFAULT_OUTFILE} };
+    struct crunch_options options = CRUNCH_OPTIONS_DEFAULT;
+    struct common_flags flags = {NULL, DEFAULT_OUTFILE};
 
-    struct membuf inbuf[1];
-    struct membuf outbuf[1];
+    struct buf inbuf;
+    struct buf outbuf;
 
     const char *appl = fixup_appl(argv[0]);
 
-    flags->options = options;
+    flags.options = &options;
+    options.direction_forward = 1;
 
     /* init logging */
     LOG_INIT_CONSOLE(LOG_NORMAL);
@@ -82,16 +81,16 @@ main(int argc, char *argv[])
         switch (c)
         {
         case 'b':
-            backwards_mode = 1;
+            options.direction_forward = 0;
             break;
         case 'r':
-            reverse_mode = 1;
+            options.write_reverse = 1;
             break;
         case 'd':
             decrunch_mode = 1;
             break;
         default:
-            handle_crunch_flags(c, flagarg, print_usage, appl, flags);
+            handle_crunch_flags(c, flagarg, print_usage, appl, &flags);
         }
     }
 
@@ -105,66 +104,59 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    membuf_init(inbuf);
-    membuf_init(outbuf);
+    buf_init(&inbuf);
+    buf_init(&outbuf);
 
-    read_file(infilev[0], inbuf);
+    read_file(infilev[0], &inbuf);
 
     if(decrunch_mode)
     {
         struct decrunch_options dopts;
-        dopts.direction = !backwards_mode;
-        dopts.flags_proto = options->flags_proto;
+        dopts.imported_encoding = NULL;
+        dopts.direction_forward = options.direction_forward;
+        dopts.write_reverse = options.write_reverse;
+        dopts.flags_proto = options.flags_proto;
 
-        if (dopts.direction == 0)
+        if (dopts.direction_forward == 0)
         {
             LOG(LOG_NORMAL, ("Decrunching infile \"%s\" to outfile \"%s\" "
-                             " backwards.\n", infilev[0], flags->outfile));
+                             " backwards.\n", infilev[0], flags.outfile));
         }
         else
         {
             LOG(LOG_NORMAL, ("Decrunching infile \"%s\" to outfile \"%s\".\n",
-                             infilev[0], flags->outfile));
+                             infilev[0], flags.outfile));
         }
 
-        decrunch(LOG_NORMAL, inbuf, outbuf, &dopts);
+        decrunch(LOG_NORMAL, &inbuf, 0, &outbuf, &dopts);
     }
     else
     {
         struct crunch_info info = STATIC_CRUNCH_INFO_INIT;
-        if(backwards_mode)
+        if(options.direction_forward == 0)
         {
             LOG(LOG_NORMAL, ("Crunching infile \"%s\" to outfile \"%s\" "
-                             "backwards.\n", infilev[0], flags->outfile));
-            crunch_backwards(inbuf, outbuf, options, &info);
+                             "backwards.\n", infilev[0], flags.outfile));
         }
         else
         {
             LOG(LOG_NORMAL, ("Crunching infile \"%s\" to outfile \"%s\".\n",
-                             infilev[0], flags->outfile));
-            crunch(inbuf, outbuf, options, &info);
+                             infilev[0], flags.outfile));
         }
+        crunch(&inbuf, 0, NULL, &outbuf, &options, &info);
 
-        LOG(LOG_NORMAL, (" Literal sequences are %sused",
-                         info.traits_used & TFLAG_LIT_SEQ ? "" : "not "));
-        LOG(LOG_NORMAL, (", length 1 sequences are %sused",
-                         info.traits_used & TFLAG_LEN1_SEQ ? "" : "not "));
-        LOG(LOG_NORMAL, (", length 0123 mirrors are %sused",
-                         info.traits_used & TFLAG_LEN0123_SEQ_MIRRORS ?
-                         "" : "not "));
-        LOG(LOG_NORMAL, (" and the safety offset is %d.\n",
-                         info.needed_safety_offset));
+        print_crunch_info(LOG_NORMAL, &info);
     }
 
-    if(reverse_mode)
+    if(options.write_reverse)
     {
-        reverse_buffer(membuf_get(outbuf), membuf_memlen(outbuf));
+        reverse_buffer(buf_data(&outbuf), buf_size(&outbuf));
     }
 
-    write_file(flags->outfile, outbuf);
+    write_file(flags.outfile, &outbuf);
 
-    membuf_free(outbuf);
-    membuf_free(inbuf);
+    buf_free(&outbuf);
+    buf_free(&inbuf);
 
     LOG_FREE;
 

@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_PC
 #define ALREADY_INCLUDED_PC
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2004 Magnus Lind.
@@ -38,4 +41,7 @@ void pc_add(int offset);
 void pc_add_expr(struct expr *pc);
 void pc_unset(void);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

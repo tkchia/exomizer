@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_PROGRESS
 #define ALREADY_INCLUDED_PROGRESS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -36,10 +39,13 @@ struct progress
     int last;
 };
 
-void progress_init(struct progress p[1], char *msg, int start, int end);
+void progress_init(struct progress *p, char *msg, int start, int end);
 
-void progress_bump(struct progress p[1], int pos);
+void progress_bump(struct progress *p, int pos);
 
-void progress_free(struct progress p[1]);
+void progress_free(struct progress *p);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -31,16 +31,16 @@
 
 #include <stdlib.h>
 
-static struct chunkpool s_expr_pool[1];
+static struct chunkpool s_expr_pool;
 
 void expr_init()
 {
-    chunkpool_init(s_expr_pool, sizeof(struct expr));
+    chunkpool_init(&s_expr_pool, sizeof(struct expr));
 }
 
 void expr_free()
 {
-    chunkpool_free(s_expr_pool);
+    chunkpool_free(&s_expr_pool);
 }
 
 void expr_dump(int level, struct expr *e)
@@ -79,7 +79,7 @@ struct expr *new_expr_op1(i16 op, struct expr *arg)
         exit(1);
     }
 
-    val = chunkpool_malloc(s_expr_pool);
+    val = chunkpool_malloc(&s_expr_pool);
     val->expr_op = op;
     val->type.arg1 = arg;
 
@@ -103,7 +103,7 @@ struct expr *new_expr_op2(i16 op, struct expr *arg1, struct expr *arg2)
         exit(1);
     }
 
-    val = chunkpool_malloc(s_expr_pool);
+    val = chunkpool_malloc(&s_expr_pool);
     val->expr_op = op;
     val->type.arg1 = arg1;
     val->expr_arg2 = arg2;
@@ -117,7 +117,7 @@ struct expr *new_expr_symref(const char *symbol)
 {
     struct expr *val;
 
-    val = chunkpool_malloc(s_expr_pool);
+    val = chunkpool_malloc(&s_expr_pool);
     val->expr_op = SYMBOL;
     val->type.symref = symbol;
 
@@ -132,7 +132,7 @@ struct expr *new_expr_number(i32 number)
 
     LOG(LOG_DEBUG, ("creating new number %d\n", number));
 
-    val = chunkpool_malloc(s_expr_pool);
+    val = chunkpool_malloc(&s_expr_pool);
     val->expr_op = NUMBER;
     val->type.number = number;
 

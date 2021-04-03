@@ -1,12 +1,17 @@
-This directory contains z80-assembly decrunchers contributed by Metalbrain
-(metalbrain_coder@gmx.net) and improved by Antonio Villena.
+Decompressor routines for Exomizer 2 & 3 by Magnus Lind
 
-The decrunchers decrunches data crunched with the raw command. the
-deexo_b.asm and deexo_simple_b.asm decrunchers decrunches data crunched
-backwards (with the -b flag).
+https://bitbucket.org/magli143/exomizer
 
-The deexo_simple.asm and deexo_simple_b.asm decrunchers don't handle literal
-sequences and assumes that the table for bits[i] and base[i] is aligned to a
-256 boundary.
+Exomizer 2 routines are deexo****.asm files (4 variants):
+-simple: no literal sequences and exo_mapbasebits aligned to a 256 boundary.
+-b: backwards.
 
-Please direct any questions about these decrunchers to Metalbrain.
+Exomizer 3 routines are deexoopt_XY.asm (10 variants):
+-b for backwards, f for forwards.
+-0..4 is the speed of the algorithm. 4 is without literal sequences and
+mapbase aligned to a 256 boundary.
+-deexoopt.asm is the unification of 8 variants (speed 4 not included).
+
+The original decompressor was written by Jaime Tejedor Gomez (Metalbrain).
+The assembler used is SjAsmPlus. For use with others assemblers maybe you
+must adapt the conditional assembly directives.

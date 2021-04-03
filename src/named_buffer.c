@@ -28,21 +28,21 @@
 #include "named_buffer.h"
 #include "log.h"
 #include "chunkpool.h"
-#include "membuf_io.h"
+#include "buf_io.h"
 
 #include <stdlib.h>
 
 void named_buffer_init(struct named_buffer *nb)
 {
     map_init(&nb->map);
-    chunkpool_init(&nb->buf, sizeof(struct membuf));
+    chunkpool_init(&nb->buf, sizeof(struct buf));
 }
 
 void named_buffer_free(struct named_buffer *nb)
 {
     typedef void cb_free(void *a);
 
-    chunkpool_free2(&nb->buf, (cb_free*)membuf_free);
+    chunkpool_free2(&nb->buf, (cb_free*)buf_free);
     map_free(&nb->map);
 }
 
@@ -55,19 +55,20 @@ void named_buffer_clear(struct named_buffer *nb)
 void named_buffer_copy(struct named_buffer *nb,
                        const struct named_buffer *source)
 {
-    struct map_iterator i[1];
+    struct map_iterator i;
     const struct map_entry *e;
 
-    for(map_get_iterator(&source->map, i); (e = map_iterator_next(i)) != NULL;)
+    for(map_get_iterator(&source->map, &i);
+        (e = map_iterator_next(&i)) != NULL;)
     {
         /* don't allocate copies of the entries */
         map_put(&nb->map, e->key, e->value);
     }
 }
 
-struct membuf *new_named_buffer(struct named_buffer *nb, const char *name)
+struct buf *new_named_buffer(struct named_buffer *nb, const char *name)
 {
-    struct membuf *mp;
+    struct buf *mp;
 
     mp = chunkpool_malloc(&nb->buf);
     /* name is already strdup:ped */
@@ -77,13 +78,13 @@ struct membuf *new_named_buffer(struct named_buffer *nb, const char *name)
         LOG(LOG_ERROR, ("buffer already exists.\n"));
         exit(1);
     }
-    membuf_init(mp);
+    buf_init(mp);
     return mp;
 }
 
-struct membuf *get_named_buffer(struct named_buffer *nb, const char *name)
+struct buf *get_named_buffer(struct named_buffer *nb, const char *name)
 {
-    struct membuf *mp;
+    struct buf *mp;
 
     mp = map_get(&nb->map, name);
     if(mp == NULL)

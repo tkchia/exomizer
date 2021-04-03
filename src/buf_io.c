@@ -25,12 +25,12 @@
  *
  */
 
-#include "membuf_io.h"
+#include "buf_io.h"
 #include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-void read_file(const char *name, struct membuf *buf)
+void read_file(const char *name, struct buf *buf)
 {
     char block[1024];
     FILE *in;
@@ -45,14 +45,14 @@ void read_file(const char *name, struct membuf *buf)
     do
     {
         len = fread(block, 1, 1024, in);
-        membuf_append(buf, block, len);
+        buf_append(buf, block, len);
     }
     while(len == 1024);
     LOG(LOG_DEBUG, ("read %d bytes from file\n", len));
     fclose(in);
 }
 
-void write_file(const char *name, struct membuf *buf)
+void write_file(const char *name, struct buf *buf)
 {
     FILE *out;
     out = fopen(name, "wb");
@@ -61,6 +61,6 @@ void write_file(const char *name, struct membuf *buf)
         LOG(LOG_ERROR, ("Can't open file \"%s\" for output.\n", name));
         exit(1);
     }
-    fwrite(membuf_get(buf), 1, membuf_memlen(buf), out);
+    fwrite(buf_data(buf), 1, buf_size(buf), out);
     fclose(out);
 }

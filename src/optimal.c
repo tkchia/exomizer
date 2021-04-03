@@ -34,22 +34,19 @@
 #include "chunkpool.h"
 #include "optimal.h"
 
-struct _interval_node {
+struct interval_node {
     int start;
     int score;
-    struct _interval_node *next;
+    struct interval_node *next;
     signed char prefix;
     signed char bits;
     signed char depth;
     signed char flags;
 };
 
-typedef struct _interval_node interval_node[1];
-typedef struct _interval_node *interval_nodep;
-
 static
 void
-interval_node_init(interval_nodep inp, int start, int depth, int flags)
+interval_node_init(struct interval_node *inp, int start, int depth, int flags)
 {
     inp->start = start;
     inp->flags = flags;
@@ -60,14 +57,13 @@ interval_node_init(interval_nodep inp, int start, int depth, int flags)
     inp->next = NULL;
 }
 
-static
-interval_nodep interval_node_clone(interval_nodep inp)
+static struct interval_node *interval_node_clone(struct interval_node *inp)
 {
-    interval_nodep inp2 = NULL;
+    struct interval_node *inp2 = NULL;
 
     if(inp != NULL)
     {
-        inp2 = malloc(sizeof(interval_node));
+        inp2 = malloc(sizeof(struct interval_node));
         if (inp2 == NULL)
         {
             LOG(LOG_ERROR, ("out of memory error in file %s, line %d\n",
@@ -82,10 +78,9 @@ interval_nodep interval_node_clone(interval_nodep inp)
     return inp2;
 }
 
-static
-void interval_node_delete(interval_nodep inp)
+static void interval_node_delete(struct interval_node *inp)
 {
-    interval_nodep inp2;
+    struct interval_node *inp2;
     while (inp != NULL)
     {
         inp2 = inp;
@@ -94,8 +89,7 @@ void interval_node_delete(interval_nodep inp)
     }
 }
 
-static
-void interval_node_dump(int level, interval_nodep inp)
+static void interval_node_dump(int level, struct interval_node *inp)
 {
     int end;
 
@@ -109,15 +103,15 @@ void interval_node_dump(int level, interval_nodep inp)
     LOG(level, ("[eol@%d]\n", end));
 }
 
-float optimal_encode_int(int arg, void *priv, output_ctxp out,
+float optimal_encode_int(int arg, void *priv, struct output_ctx *out,
                          struct encode_int_bucket *eibp)
 {
-    interval_nodep inp;
+    struct interval_node *inp;
     int end;
 
     float val;
 
-    inp = (interval_nodep) priv;
+    inp = priv;
     val = 100000000.0;
     end = 0;
     while (inp != NULL)
@@ -165,12 +159,14 @@ float optimal_encode_int(int arg, void *priv, output_ctxp out,
     return val;
 }
 
-float optimal_encode(const_matchp mp, encode_match_data emd,
+float optimal_encode(const struct match *mp,
+                     struct encode_match_data *emd,
+                     unsigned int prev_offset,
                      struct encode_match_buckets *embp)
 {
-    interval_nodep *offset;
+    struct interval_node **offset;
     float bits;
-    encode_match_privp data;
+    struct encode_match_priv *data;
     struct encode_int_bucket *eib_len = NULL;
     struct encode_int_bucket *eib_offset = NULL;
     if (embp != NULL)
@@ -197,38 +193,50 @@ float optimal_encode(const_matchp mp, encode_match_data emd,
     } else
     {
         bits += 1.0;
-        switch (mp->len)
+        if (mp->offset != prev_offset)
         {
-        case 0:
-            LOG(LOG_ERROR, ("bad len\n"));
-            exit(1);
-            break;
-        case 1:
-            if (data->flags_notrait & TFLAG_LEN1_SEQ)
+            switch (mp->len)
             {
-                bits += 100000000.0;
-            }
-            else
-            {
-                bits += data->offset_f(mp->offset, offset[0], emd->out,
+            case 0:
+                LOG(LOG_ERROR, ("bad len\n"));
+                exit(1);
+                break;
+            case 1:
+                if (data->flags_notrait & TFLAG_LEN1_SEQ)
+                {
+                    bits += 100000000.0;
+                }
+                else
+                {
+                    bits += data->offset_f(mp->offset, offset[0], emd->out,
+                                           eib_offset);
+                }
+                break;
+            case 2:
+                bits += data->offset_f(mp->offset, offset[1], emd->out,
                                        eib_offset);
-            }
-            break;
-        case 2:
-            bits += data->offset_f(mp->offset, offset[1], emd->out,
-                                   eib_offset);
-            break;
-        case 3:
-            if (data->flags_proto & PFLAG_4_OFFSET_TABLES)
-            {
-                bits += data->offset_f(mp->offset, offset[2], emd->out,
+                break;
+            case 3:
+                if (data->flags_proto & PFLAG_4_OFFSET_TABLES)
+                {
+                    bits += data->offset_f(mp->offset, offset[2], emd->out,
+                                           eib_offset);
+                    break;
+                }
+            default:
+                bits += data->offset_f(mp->offset, offset[7], emd->out,
                                        eib_offset);
                 break;
             }
-        default:
-            bits += data->offset_f(mp->offset, offset[7], emd->out,
-                                   eib_offset);
-            break;
+        }
+        if (prev_offset > 0)
+        {
+            /* reuse previous offset state cost */
+            bits += 1.0;
+            if (emd->out != NULL)
+            {
+                output_bits(emd->out, 1, mp->offset == prev_offset);
+            }
         }
         bits += data->len_f(mp->len, data->len_f_priv, emd->out, eib_len);
         if (bits > (9.0 * mp->len))
@@ -263,25 +271,22 @@ float optimal_encode(const_matchp mp, encode_match_data emd,
     return bits;
 }
 
-struct _optimize_arg {
-    radix_root cache;
+struct optimize_arg {
+    struct radix_root cache;
     int *stats;
     int *stats2;
     int max_depth;
     int flags;
-    struct chunkpool in_pool[1];
+    struct chunkpool in_pool;
 };
 
-#define CACHE_KEY(START, DEPTH, MAXDEPTH) ((int)((START)*(MAXDEPTH)|DEPTH))
+#define CACHE_KEY(START, DEPTH) ((int)((START)*32+DEPTH))
 
-typedef struct _optimize_arg optimize_arg[1];
-typedef struct _optimize_arg optimize_argp;
-
-static interval_nodep
-optimize1(optimize_arg arg, int start, int depth, int init)
+static struct interval_node *optimize1(struct optimize_arg *arg, int start,
+                                       int depth, int init)
 {
-    interval_node inp;
-    interval_nodep best_inp;
+    struct interval_node in;
+    struct interval_node *best_inp;
     int key;
     int end, i;
     int start_count, end_count;
@@ -295,37 +300,37 @@ optimize1(optimize_arg arg, int start, int depth, int init)
         {
             break;
         }
-        key = CACHE_KEY(start, depth, arg->max_depth);
-        best_inp = radix_node_get(arg->cache, key);
+        key = CACHE_KEY(start, depth);
+        best_inp = radix_node_get(&arg->cache, key);
         if (best_inp != NULL)
         {
             break;
         }
 
-        interval_node_init(inp, start, depth, arg->flags);
+        interval_node_init(&in, start, depth, arg->flags);
 
         for (i = 0; i < 16; ++i)
         {
-            inp->next = NULL;
-            inp->bits = i;
+            in.next = NULL;
+            in.bits = i;
             end = start + (1 << i);
 
             start_count = end_count = 0;
-            if (start < 65536)
+            if (start < 1000000)
             {
                 start_count = arg->stats[start];
-                if (end < 65536)
+                if (end < 1000000)
                 {
                     end_count = arg->stats[end];
                 }
             }
 
-            inp->score = (start_count - end_count) *
-                (inp->prefix + inp->bits);
+            in.score = (start_count - end_count) *
+                (in.prefix + in.bits);
 
             /* one index below */
             LOG(LOG_DUMP, ("interval score: [%d<<%d[%d\n",
-                           start, i, inp->score));
+                           start, i, in.score));
             if (end_count > 0)
             {
                 int penalty;
@@ -334,7 +339,7 @@ optimize1(optimize_arg arg, int start, int depth, int init)
                 if (depth + 1 < arg->max_depth)
                 {
                     /* we can go deeper, let's try that */
-                    inp->next = optimize1(arg, end, depth + 1, i);
+                    in.next = optimize1(arg, end, depth + 1, i);
                 }
                 /* get the penalty for skipping */
                 penalty = 100000000;
@@ -342,26 +347,26 @@ optimize1(optimize_arg arg, int start, int depth, int init)
                 {
                     penalty = arg->stats2[end];
                 }
-                if (inp->next != NULL && inp->next->score < penalty)
+                if (in.next != NULL && in.next->score < penalty)
                 {
-                    penalty = inp->next->score;
+                    penalty = in.next->score;
                 }
-                inp->score += penalty;
+                in.score += penalty;
             }
-            if (best_inp == NULL || inp->score < best_inp->score)
+            if (best_inp == NULL || in.score < best_inp->score)
             {
                 /* it's the new best in town, use it */
                 if (best_inp == NULL)
                 {
                     /* allocate if null */
-                    best_inp = chunkpool_malloc(arg->in_pool);
+                    best_inp = chunkpool_malloc(&arg->in_pool);
                 }
-                *best_inp = *inp;
+                *best_inp = in;
             }
         }
         if (best_inp != NULL)
         {
-            radix_node_set(arg->cache, key, best_inp);
+            radix_node_set(&arg->cache, key, best_inp);
         }
     }
     while (0);
@@ -374,75 +379,75 @@ optimize1(optimize_arg arg, int start, int depth, int init)
     return best_inp;
 }
 
-static interval_nodep
-optimize(int stats[65536], int stats2[65536], int max_depth, int flags)
+static struct interval_node *optimize(int stats[], int stats2[],
+                                      int max_depth, int flags)
 {
-    optimize_arg arg;
+    struct optimize_arg arg;
 
-    interval_nodep inp;
+    struct interval_node *inp;
 
-    arg->stats = stats;
-    arg->stats2 = stats2;
+    arg.stats = stats;
+    arg.stats2 = stats2;
 
-    arg->max_depth = max_depth;
-    arg->flags = flags;
+    arg.max_depth = max_depth;
+    arg.flags = flags;
 
-    chunkpool_init(arg->in_pool, sizeof(interval_node));
+    chunkpool_init(&arg.in_pool, sizeof(struct interval_node));
 
-    radix_tree_init(arg->cache);
+    radix_tree_init(&arg.cache);
 
-    inp = optimize1(arg, 1, 0, 0);
+    inp = optimize1(&arg, 1, 0, 0);
 
     /* use normal malloc for the winner */
     inp = interval_node_clone(inp);
 
     /* cleanup */
-    radix_tree_free(arg->cache, NULL, NULL);
-    chunkpool_free(arg->in_pool);
+    radix_tree_free(&arg.cache, NULL, NULL);
+    chunkpool_free(&arg.in_pool);
 
     return inp;
 }
 
-static void export_helper(interval_nodep np, int depth,
-                          struct membuf *target)
+static void export_helper(struct interval_node *np, int depth,
+                          struct buf *target)
 {
     while(np != NULL)
     {
-        membuf_printf(target, "%X", np->bits);
+        buf_printf(target, "%X", np->bits);
         np = np->next;
         --depth;
     }
     while(depth-- > 0)
     {
-        membuf_printf(target, "0");
+        buf_printf(target, "0");
     }
 }
 
 
-void optimal_encoding_export(encode_match_data emd,
-                             struct membuf *target)
+void optimal_encoding_export(struct encode_match_data *emd,
+                             struct buf *target)
 {
-    interval_nodep *offsets;
-    encode_match_privp data;
+    struct interval_node **offsets;
+    struct encode_match_priv *data;
 
-    membuf_truncate(target, 0);
+    buf_clear(target);
     data = emd->priv;
-    offsets = (interval_nodep*)data->offset_f_priv;
-    export_helper((interval_nodep)data->len_f_priv, 16, target);
-    membuf_append_char(target, ',');
+    offsets = data->offset_f_priv;
+    export_helper(data->len_f_priv, 16, target);
+    buf_append_char(target, ',');
     export_helper(offsets[0], 4, target);
-    membuf_append_char(target, ',');
+    buf_append_char(target, ',');
     export_helper(offsets[1], 16, target);
     if (data->flags_proto & PFLAG_4_OFFSET_TABLES)
     {
-        membuf_append_char(target, ',');
+        buf_append_char(target, ',');
         export_helper(offsets[2], 16, target);
     }
-    membuf_append_char(target, ',');
+    buf_append_char(target, ',');
     export_helper(offsets[7], 16, target);
 }
 
-static void import_helper(interval_nodep *npp,
+static void import_helper(struct interval_node **npp,
                           const char **encodingp,
                           int flags)
 {
@@ -457,7 +462,7 @@ static void import_helper(interval_nodep *npp,
         char buf[2] = {0, 0};
         char *dummy;
         int bits;
-        interval_nodep np;
+        struct interval_node *np;
 
         if(c == ',')
         {
@@ -469,7 +474,7 @@ static void import_helper(interval_nodep *npp,
 
         LOG(LOG_DUMP, ("got bits %d\n", bits));
 
-        np = malloc(sizeof(interval_node));
+        np = malloc(sizeof(struct interval_node));
         interval_node_init(np, start, depth, flags);
         np->bits = bits;
 
@@ -482,11 +487,11 @@ static void import_helper(interval_nodep *npp,
     *encodingp = encoding;
 }
 
-void optimal_encoding_import(encode_match_data emd,
+void optimal_encoding_import(struct encode_match_data *emd,
                              const char *encoding)
 {
-    encode_match_privp data;
-    interval_nodep *npp, *offsets;
+    struct encode_match_priv *data;
+    struct interval_node **npp, **offsets;
 
     LOG(LOG_DEBUG, ("importing encoding: %s\n", encoding));
 
@@ -496,7 +501,7 @@ void optimal_encoding_import(encode_match_data emd,
     optimal_init(emd, data->flags_notrait, data->flags_proto);
 
     data = emd->priv;
-    offsets = (interval_nodep*)data->offset_f_priv;
+    offsets = data->offset_f_priv;
 
     /* lengths */
     npp = (void*)&data->len_f_priv;
@@ -525,21 +530,21 @@ void optimal_encoding_import(encode_match_data emd,
     optimal_dump(LOG_DEBUG, emd);
 }
 
-void optimal_init(encode_match_data emd,/* IN/OUT */
+void optimal_init(struct encode_match_data *emd,/* IN/OUT */
                   int flags_notrait,      /* IN */
                   int flags_proto)      /* IN */
 {
-    encode_match_privp data;
-    interval_nodep *inpp;
+    struct encode_match_priv *data;
+    struct interval_node **inpp;
 
-    emd->priv = malloc(sizeof(encode_match_priv));
+    emd->priv = malloc(sizeof(struct encode_match_priv));
     data = emd->priv;
 
-    memset(data, 0, sizeof(encode_match_priv));
+    memset(data, 0, sizeof(struct encode_match_priv));
 
     data->offset_f = optimal_encode_int;
     data->len_f = optimal_encode_int;
-    inpp = malloc(sizeof(interval_nodep[8]));
+    inpp = malloc(sizeof(struct interval_node *) * 8);
     inpp[0] = NULL;
     inpp[1] = NULL;
     inpp[2] = NULL;
@@ -554,11 +559,11 @@ void optimal_init(encode_match_data emd,/* IN/OUT */
     data->flags_proto = flags_proto;
 }
 
-void optimal_free(encode_match_data emd)        /* IN */
+void optimal_free(struct encode_match_data *emd)        /* IN */
 {
-    encode_match_privp data;
-    interval_nodep *inpp;
-    interval_nodep inp;
+    struct encode_match_priv *data;
+    struct interval_node **inpp;
+    struct interval_node *inp;
 
     data = emd->priv;
 
@@ -583,7 +588,7 @@ void optimal_free(encode_match_data emd)        /* IN */
     data->len_f_priv = NULL;
 }
 
-void freq_stats_dump(int level, int arr[65536])
+void freq_stats_dump(int level, int arr[])
 {
     int i;
     for (i = 0; i < 32; ++i)
@@ -593,7 +598,7 @@ void freq_stats_dump(int level, int arr[65536])
     LOG(level, ("\n"));
 }
 
-void freq_stats_dump_raw(int level, int arr[65536])
+void freq_stats_dump_raw(int level, int arr[])
 {
     int i;
     for (i = 0; i < 32; ++i)
@@ -603,20 +608,19 @@ void freq_stats_dump_raw(int level, int arr[65536])
     LOG(level, ("\n"));
 }
 
-void optimal_optimize(encode_match_data emd,    /* IN/OUT */
-                      matchp_enum_get_next_f * f,       /* IN */
+void optimal_optimize(struct encode_match_data *emd,    /* IN/OUT */
+                      match_enum_next_f *enum_next_f,   /* IN */
                       void *matchp_enum)        /* IN */
 {
-    encode_match_privp data;
-    const_matchp mp;
-    interval_nodep *offset;
-    static int offset_arr[8][65536];
-    static int offset_parr[8][65536];
-    static int len_arr[65536];
+    struct encode_match_priv *data;
+    const struct match *mp;
+    struct interval_node **offset;
+    static int offset_arr[8][1000000];
+    static int offset_parr[8][1000000];
+    static int len_arr[1000000];
     int treshold;
 
     int i, j;
-    void *priv1;
 
     data = emd->priv;
 
@@ -627,8 +631,7 @@ void optimal_optimize(encode_match_data emd,    /* IN/OUT */
     offset = data->offset_f_priv;
 
     /* first the lens */
-    priv1 = matchp_enum;
-    while ((mp = f(priv1)) != NULL && mp->len > 0)
+    while ((mp = enum_next_f(matchp_enum)) != NULL)
     {
         if (mp->offset > 0)
         {
@@ -652,8 +655,7 @@ void optimal_optimize(encode_match_data emd,    /* IN/OUT */
     data->len_f_priv = optimize(len_arr, NULL, 16, -1);
 
     /* then the offsets */
-    priv1 = matchp_enum;
-    while ((mp = f(priv1)) != NULL && mp->len > 0)
+    while ((mp = enum_next_f(matchp_enum)) != NULL)
     {
         if (mp->offset > 0)
         {
@@ -706,7 +708,7 @@ void optimal_optimize(encode_match_data emd,    /* IN/OUT */
         }
     }
 
-    for (i = 65534; i >= 0; --i)
+    for (i = 999998; i >= 0; --i)
     {
         for (j = 0; j < 8; ++j)
         {
@@ -730,11 +732,11 @@ void optimal_optimize(encode_match_data emd,    /* IN/OUT */
     }
 }
 
-void optimal_dump(int level, encode_match_data emd)
+void optimal_dump(int level, struct encode_match_data *emd)
 {
-    encode_match_privp data;
-    interval_nodep *offset;
-    interval_nodep len;
+    struct encode_match_priv *data;
+    struct interval_node **offset;
+    struct interval_node *len;
 
     data = emd->priv;
 
@@ -759,13 +761,12 @@ void optimal_dump(int level, encode_match_data emd)
     interval_node_dump(level, offset[7]);
 }
 
-static
-void interval_out(output_ctx out, interval_nodep inp1, int size,
-    int flags_proto)
+static void interval_out(struct output_ctx *out, struct interval_node *inp1,
+                         int size, int flags_proto)
 {
     unsigned char buffer[256];
     unsigned char count;
-    interval_nodep inp;
+    struct interval_node *inp;
 
     count = 0;
 
@@ -798,12 +799,12 @@ void interval_out(output_ctx out, interval_nodep inp1, int size,
     }
 }
 
-void optimal_out(output_ctx out,        /* IN/OUT */
-                 encode_match_data emd) /* IN */
+void optimal_out(struct output_ctx *out,        /* IN/OUT */
+                 struct encode_match_data *emd) /* IN */
 {
-    encode_match_privp data;
-    interval_nodep *offset;
-    interval_nodep len;
+    struct encode_match_priv *data;
+    struct interval_node **offset;
+    struct interval_node *len;
 
     data = emd->priv;
 

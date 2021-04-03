@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_AREATRACE
 #define ALREADY_INCLUDED_AREATRACE
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2018 Magnus Lind.
@@ -36,7 +39,7 @@ struct areatrace
     struct vec areas;
 };
 
-void areatrace_init(struct areatrace at[1]);
+void areatrace_init(struct areatrace *at);
 
 void areatrace_free(struct areatrace *at);
 
@@ -60,4 +63,7 @@ void areatrace_get_largest(const struct areatrace *at, /* IN */
                            int *startp /* OUT */,
                            int *endp); /* OUT */
 
+#ifdef __cplusplus
+}
+#endif
 #endif

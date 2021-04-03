@@ -27,6 +27,11 @@
  *   specific prior written permission.
  */
 
+/**
+ * This decompressor decompresses files that have been compressed
+ * using the raw sub-sub command with the -P39 (default) setting of
+ * the raw command.
+ */
 #define MAX_OFFSET 65535
 
 typedef int exo_read_crunched_byte(void *data);

@@ -1,5 +1,8 @@
-#ifndef MEMBUF_IO_ALREADY_INCLUDED
-#define MEMBUF_IO_ALREADY_INCLUDED
+#ifndef BUF_IO_ALREADY_INCLUDED
+#define BUF_IO_ALREADY_INCLUDED
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -28,8 +31,11 @@
  *
  */
 
-#include "membuf.h"
-void read_file(const char *name, struct membuf *buf);
-void write_file(const char *name, struct membuf *buf);
+#include "buf.h"
+void read_file(const char *name, struct buf *buf);
+void write_file(const char *name, struct buf *buf);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

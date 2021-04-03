@@ -1,5 +1,8 @@
 #ifndef INCLUDED_PARSE
 #define INCLUDED_PARSE
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -30,7 +33,7 @@
 
 #include "int.h"
 #include "vec.h"
-#include "membuf.h"
+#include "buf.h"
 #include "expr.h"
 #include "map.h"
 #include "named_buffer.h"
@@ -91,9 +94,9 @@ void set_initial_symbol(const char *symbol, i32 value);
 void set_initial_symbol_soft(const char *symbol, i32 value);
 void initial_symbol_dump(int level, const char *symbol);
 
-struct membuf *new_initial_named_buffer(const char *name);
+struct buf *new_initial_named_buffer(const char *name);
 
-int assemble(struct membuf *source, struct membuf *dest);
+int assemble(struct buf *source, struct buf *dest);
 
 /* start of internal functions */
 
@@ -133,9 +136,12 @@ void asm_error(const char *msg);
 void asm_echo(const char *msg, struct atom *atom);
 void asm_include(const char *msg);
 
-void output_atoms(struct membuf *out, struct vec *mem);
-void asm_src_buffer_push(struct membuf *buf);
+void output_atoms(struct buf *out, struct vec *mem);
+void asm_src_buffer_push(struct buf *buf);
 
-int assembleSinglePass(struct membuf *source, struct membuf *dest);
+int assembleSinglePass(struct buf *source, struct buf *dest);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

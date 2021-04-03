@@ -31,7 +31,7 @@
 
 #define BAR_LENGTH 64
 
-void progress_init(struct progress p[1], char *msg, int start, int end)
+void progress_init(struct progress *p, char *msg, int start, int end)
 {
     if(start > end)
     {
@@ -54,7 +54,7 @@ void progress_init(struct progress p[1], char *msg, int start, int end)
                     start, end, p->factor, p->offset));
 }
 
-void progress_bump(struct progress p[1], int pos)
+void progress_bump(struct progress *p, int pos)
 {
     int fraction = ((pos + p->offset) * p->factor) + 0.5;
     while(fraction > p->last)
@@ -71,6 +71,7 @@ void progress_bump(struct progress p[1], int pos)
     }
 }
 
-void progress_free(struct progress p[1])
+void progress_free(struct progress *p)
 {
+    LOG_TTY(LOG_NORMAL, ("\n"));
 }

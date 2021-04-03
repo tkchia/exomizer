@@ -1,5 +1,9 @@
 #ifndef ALREADY_INCLUDED_RADIX
 #define ALREADY_INCLUDED_RADIX
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Copyright (c) 2002, 2003 Magnus Lind.
  *
@@ -29,32 +33,29 @@
 
 #include "chunkpool.h"
 
-typedef struct _radix_node *radix_nodep;
-
-struct _radix_root {
+struct radix_root {
     int depth;
-    radix_nodep root;
-    struct chunkpool mem[1];
+    struct radix_node *root;
+    struct chunkpool mem;
 };
-
-typedef struct _radix_root radix_root[1];
-typedef struct _radix_root *radix_rootp;
-
 
 typedef void free_callback(void *data, void *priv);
 
 /* *f will be called even for null pointers */
-void radix_tree_free(radix_root rr,     /* IN */
+void radix_tree_free(struct radix_root *rr,     /* IN */
                      free_callback * f, /* IN */
                      void *priv);       /* IN */
 
-void radix_tree_init(radix_root rr);    /* IN */
+void radix_tree_init(struct radix_root *rr);    /* IN */
 
-void radix_node_set(radix_root rr,      /* IN */
+void radix_node_set(struct radix_root *rr,      /* IN */
                     unsigned int index, /* IN */
                     void *data);        /* IN */
 
-void *radix_node_get(radix_root rr,     /* IN */
+void *radix_node_get(struct radix_root *rr,     /* IN */
                      unsigned int index);       /* IN */
 
+#ifdef __cplusplus
+}
+#endif
 #endif

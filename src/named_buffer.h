@@ -1,5 +1,8 @@
 #ifndef NAMED_BUFFER_INCLUDED
 #define NAMED_BUFFER_INCLUDED
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -28,7 +31,7 @@
  *
  */
 
-#include "membuf.h"
+#include "buf.h"
 #include "chunkpool.h"
 #include "map.h"
 
@@ -44,7 +47,10 @@ void named_buffer_clear(struct named_buffer *nb);
 void named_buffer_copy(struct named_buffer *nb,
                        const struct named_buffer *source);
 
-struct membuf *new_named_buffer(struct named_buffer *nb, const char *name);
-struct membuf *get_named_buffer(struct named_buffer *nb, const char *name);
+struct buf *new_named_buffer(struct named_buffer *nb, const char *name);
+struct buf *get_named_buffer(struct named_buffer *nb, const char *name);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

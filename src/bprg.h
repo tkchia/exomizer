@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_BPRG
 #define ALREADY_INCLUDED_BPRG
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2003 Magnus Lind.
@@ -60,7 +63,7 @@ void
 bprg_get_iterator(struct bprg_ctx *ctx, struct bprg_iterator *i);
 
 struct brow {
-    unsigned char row[1];
+    unsigned char row[1]; /* Flexible array member */
 };
 
 int
@@ -92,4 +95,7 @@ void
 bprg_trampoline_add(struct bprg_ctx *ctx,
                     int *start, int *var, int *end,
                     int flags);
+#ifdef __cplusplus
+}
+#endif
 #endif

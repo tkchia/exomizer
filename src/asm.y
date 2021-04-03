@@ -29,7 +29,7 @@
 #include "int.h"
 #include "parse.h"
 #include "vec.h"
-#include "membuf.h"
+#include "buf.h"
 #include "log.h"
 #include <stdio.h>
 #define YYERROR_VERBOSE
@@ -422,9 +422,9 @@ void yyerror (const char *s)
     fprintf (stderr, "line %d, %s\n", num_lines, s);
 }
 
-void asm_set_source(struct membuf *buffer);
+void asm_set_source(struct buf *buffer);
 
-int assembleSinglePass(struct membuf *source, struct membuf *dest)
+int assembleSinglePass(struct buf *source, struct buf *dest)
 {
     int val;
 

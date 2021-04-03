@@ -24,6 +24,11 @@
  *   specific prior written permission.
  */
 
+/**
+ * This decompressor decompresses files that have been compressed
+ * using the raw sub-sub command with the -P39 (default) setting of
+ * the raw command.
+ */
 #include "exodecrunch.h"
 #include <stdlib.h>
 
@@ -56,6 +61,7 @@ struct exo_decrunch_ctx
     unsigned short int offset;
     unsigned short int window_pos;
     unsigned char bit_buffer;
+    unsigned char reuse_offset_state;
 
     exo_read_crunched_byte *read_byte;
     void *read_data;
@@ -129,6 +135,7 @@ exo_decrunch_new(unsigned short int max_offset,
     ctx->state = STATE_IMPLICIT_FIRST_LITERAL_BYTE;
     ctx->window_pos = 0;
     ctx->bit_buffer = read_byte(read_data);
+    ctx->reuse_offset_state = 1;
     ctx->read_byte = read_byte;
     ctx->read_data = read_data;
 
@@ -178,15 +185,15 @@ exo_read_decrunched_byte(struct exo_decrunch_ctx *ctx)
     switch(ctx->state)
     {
     case STATE_IMPLICIT_FIRST_LITERAL_BYTE:
-        /* literal byte */
-        c = ctx->read_byte(ctx->read_data);
         ctx->state = STATE_NEXT_BYTE;
-        break;
+        goto implicit_literal_byte;
     case STATE_NEXT_BYTE:
         if(read_bits(ctx, 1) == 1)
         {
+        implicit_literal_byte:
             /* literal byte */
             c = ctx->read_byte(ctx->read_data);
+            ctx->reuse_offset_state += ctx->reuse_offset_state + 1;
             break;
         }
         /* sequence */
@@ -201,6 +208,7 @@ exo_read_decrunched_byte(struct exo_decrunch_ctx *ctx)
             if(--ctx->length == 0)
             {
                 ctx->state = STATE_NEXT_BYTE;
+                ctx->reuse_offset_state += ctx->reuse_offset_state + 1;
             }
             c = ctx->read_byte(ctx->read_data);
             break;
@@ -216,23 +224,28 @@ exo_read_decrunched_byte(struct exo_decrunch_ctx *ctx)
         /* sequence */
         table_entry = ctx->lengths + length_index;
         ctx->length = table_entry->base + read_bits(ctx, table_entry->bits);
-        switch(ctx->length)
+
+        if ((ctx->reuse_offset_state & 3) != 1 || !read_bits(ctx, 1))
         {
-        case 1:
-            table_entry = ctx->offsets1 + read_bits(ctx, 2);
-            break;
-        case 2:
-            table_entry = ctx->offsets2 + read_bits(ctx, 4);
-            break;
-        default:
-            table_entry = ctx->offsets3 + read_bits(ctx, 4);
+            switch(ctx->length)
+            {
+            case 1:
+                table_entry = ctx->offsets1 + read_bits(ctx, 2);
+                break;
+            case 2:
+                table_entry = ctx->offsets2 + read_bits(ctx, 4);
+                break;
+            default:
+                table_entry = ctx->offsets3 + read_bits(ctx, 4);
+            }
+            ctx->offset = table_entry->base + read_bits(ctx, table_entry->bits);
         }
-        ctx->offset = table_entry->base + read_bits(ctx, table_entry->bits);
         ctx->state = STATE_NEXT_SEQUENCE_BYTE;
     case STATE_NEXT_SEQUENCE_BYTE:
         if(--ctx->length == 0)
         {
             ctx->state = STATE_NEXT_BYTE;
+            ctx->reuse_offset_state += ctx->reuse_offset_state + 0;
         }
         c = read_byte_from_window(ctx, ctx->offset);
         break;

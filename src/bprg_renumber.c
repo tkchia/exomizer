@@ -58,9 +58,9 @@ struct goto_target {
 };
 
 struct renumber_ctx {
-    struct vec fixups[1];
-    struct vec targets[1];
-    struct vec_iterator i[1];
+    struct vec fixups;
+    struct vec targets;
+    struct vec_iterator i;
     struct goto_fixup *fixup;
     int line;
     int step;
@@ -89,8 +89,8 @@ goto_fixup_add(struct bprg_ctx *ctx,
                int line,
                char **p)
 {
-    struct goto_fixup fixup[1];
-    struct goto_target target[1];
+    struct goto_fixup fixup;
+    struct goto_target target;
 
     unsigned short number;
     char *n;
@@ -120,24 +120,24 @@ goto_fixup_add(struct bprg_ctx *ctx,
         }
 
         /* register the goto into the fixup vec */
-        fixup->where = (unsigned char *)n;
-        fixup->old_line = number;
-        fixup->from_line = line;
+        fixup.where = (unsigned char *)n;
+        fixup.old_line = number;
+        fixup.from_line = line;
 
         LOG(LOG_VERBOSE, ("adding fixup line %d\n", line));
-        vec_push(rctx->fixups, fixup);
+        vec_push(&rctx->fixups, &fixup);
 
-        target->old_line = number;
-        target->new_line = -1;
+        target.old_line = number;
+        target.new_line = -1;
 
-        vec_insert_uniq(rctx->targets, goto_target_cb_cmp, &target, NULL);
+        vec_insert_uniq(&rctx->targets, goto_target_cb_cmp, &target, NULL);
 
         /* always add a reverse mapping is not optimal
          * but an optimal approach would include graph traversal.. */
-        target->old_line = line;
-        target->new_line = -1;
+        target.old_line = line;
+        target.new_line = -1;
 
-        vec_insert_uniq(rctx->targets, goto_target_cb_cmp, &target, NULL);
+        vec_insert_uniq(&rctx->targets, goto_target_cb_cmp, &target, NULL);
 
         n = n1;
 
@@ -146,7 +146,10 @@ goto_fixup_add(struct bprg_ctx *ctx,
 
         if(*n != ',') break;
 
-        /* *n == ',' here */
+        /* *n == ',' here
+    int max_diff;
+    int diff;
+    int traits_used = 0; */
         ++n;
 
     } while (1);
@@ -158,12 +161,12 @@ static void
 goto_scan(struct bprg_ctx *ctx,
           struct renumber_ctx *rctx)
 {
-    struct bprg_iterator i[1];
+    struct bprg_iterator i;
     struct brow *b;
 
-    bprg_get_iterator(ctx, i);
+    bprg_get_iterator(ctx, &i);
 
-    while(bprg_iterator_next(i, &b))
+    while(bprg_iterator_next(&i, &b))
     {
         const char *accept[3] = {TOKSTR_NUMBER "\"", "\"", ""};
         int line;
@@ -222,7 +225,7 @@ renumber1_cb_line_mutate(const unsigned char *in, /* IN */
                          void *priv) /* IN/OUT */
 {
     struct renumber_ctx *rctx;
-    struct goto_target target_key[1];
+    struct goto_target target_key;
     struct goto_target *target;
     int start;
     int i;
@@ -231,9 +234,9 @@ renumber1_cb_line_mutate(const unsigned char *in, /* IN */
     rctx = priv;
 
     /* prepare target key */
-    target_key->old_line = in[2] | (in[3] << 8);
+    target_key.old_line = in[2] | (in[3] << 8);
     /* update targets vector with the new line number */
-    target = vec_find2(rctx->targets, goto_target_cb_cmp, target_key);
+    target = vec_find2(&rctx->targets, goto_target_cb_cmp, &target_key);
 
     line = 0;
     if(target != NULL || rctx->mode == 0)
@@ -246,7 +249,7 @@ renumber1_cb_line_mutate(const unsigned char *in, /* IN */
     }
 
     LOG(LOG_DUMP, ("renumbering line %d to %d (target %p)\n",
-                   target_key->old_line, line, (void*)target));
+                   target_key.old_line, line, (void*)target));
 
     if(target != NULL || rctx->mode == 0)
     {
@@ -301,16 +304,16 @@ renumber2_cb_line_mutate(const unsigned char *in, /* IN */
         if (rctx->fixup != NULL && rctx->fixup->where == in)
         {
             /* hoaa, fixup reference */
-            struct goto_target target_key[1];
+            struct goto_target target_key;
             struct goto_target *target;
 
             LOG(LOG_DUMP, ("found fixup goto %u at %p\n",
                            rctx->fixup->old_line, (void*)in));
 
-            target_key->old_line = rctx->fixup->old_line;
-            target = vec_find2(rctx->targets,
-                              goto_target_cb_cmp,
-                              target_key);
+            target_key.old_line = rctx->fixup->old_line;
+            target = vec_find2(&rctx->targets,
+                               goto_target_cb_cmp,
+                               &target_key);
             if(target == NULL)
             {
                 LOG(LOG_ERROR, ("found fixup has no target \n"));
@@ -332,7 +335,7 @@ renumber2_cb_line_mutate(const unsigned char *in, /* IN */
             strtol((char*)in, (void*)&in, 10);
 
             /* set where to next fixup */
-            rctx->fixup = vec_iterator_next(rctx->i);
+            rctx->fixup = vec_iterator_next(&rctx->i);
         }
         /* copy byte normally */
         c = *(in++);
@@ -354,28 +357,28 @@ bprg_renumber(struct bprg_ctx *ctx,
               int step,
               int mode)
 {
-    struct renumber_ctx rctx[1];
+    struct renumber_ctx rctx;
 
-    vec_init(rctx->fixups, sizeof(struct goto_fixup));
-    vec_init(rctx->targets, sizeof(struct goto_target));
+    vec_init(&rctx.fixups, sizeof(struct goto_fixup));
+    vec_init(&rctx.targets, sizeof(struct goto_target));
 
-    goto_scan(ctx, rctx);
+    goto_scan(ctx, &rctx);
 
-    rctx->line = start;
-    rctx->step = step;
-    rctx->mode = mode;
+    rctx.line = start;
+    rctx.step = step;
+    rctx.mode = mode;
 
     /* just renumber the lines */
-    bprg_lines_mutate(ctx, renumber1_cb_line_mutate, rctx);
+    bprg_lines_mutate(ctx, renumber1_cb_line_mutate, &rctx);
 
-    vec_get_iterator(rctx->fixups, rctx->i);
-    rctx->fixup = vec_iterator_next(rctx->i);
+    vec_get_iterator(&rctx.fixups, &rctx.i);
+    rctx.fixup = vec_iterator_next(&rctx.i);
 
     /* now fixup line references */
-    bprg_lines_mutate(ctx, renumber2_cb_line_mutate, rctx);
+    bprg_lines_mutate(ctx, renumber2_cb_line_mutate, &rctx);
 
-    vec_free(rctx->targets, NULL);
-    vec_free(rctx->targets, NULL);
+    vec_free(&rctx.targets, NULL);
+    vec_free(&rctx.targets, NULL);
 }
 
 static int
@@ -442,12 +445,12 @@ rem_cb_line_mutate(const unsigned char *in, /* IN */
             if(i == 4)
             {
                 /* rem at the beginning of a line */
-                struct goto_target target_key[1];
+                struct goto_target target_key;
                 struct goto_target *target;
-                target_key->old_line = line;
-                target = vec_find2(rctx->targets,
-                                  goto_target_cb_cmp,
-                                  target_key);
+                target_key.old_line = line;
+                target = vec_find2(&rctx->targets,
+                                   goto_target_cb_cmp,
+                                   &target_key);
                 if(target == NULL)
                 {
                     /* skip this line entirely */
@@ -480,15 +483,15 @@ rem_cb_line_mutate(const unsigned char *in, /* IN */
 void
 bprg_rem_remove(struct bprg_ctx *ctx)
 {
-    struct renumber_ctx rctx[1];
+    struct renumber_ctx rctx;
 
-    vec_init(rctx->fixups, sizeof(struct goto_fixup));
-    vec_init(rctx->targets, sizeof(struct goto_target));
+    vec_init(&rctx.fixups, sizeof(struct goto_fixup));
+    vec_init(&rctx.targets, sizeof(struct goto_target));
 
-    goto_scan(ctx, rctx);
+    goto_scan(ctx, &rctx);
 
-    bprg_lines_mutate(ctx, rem_cb_line_mutate, rctx);
+    bprg_lines_mutate(ctx, rem_cb_line_mutate, &rctx);
 
-    vec_free(rctx->targets, NULL);
-    vec_free(rctx->fixups, NULL);
+    vec_free(&rctx.targets, NULL);
+    vec_free(&rctx.fixups, NULL);
 }

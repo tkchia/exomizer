@@ -29,7 +29,7 @@
 #include "log.h"
 #include "output.h"
 
-static void bitbuf_bit(output_ctx ctx, int bit)
+static void bitbuf_bit(struct output_ctx *ctx, int bit)
 {
     if (ctx->flags_proto & PFLAG_BITS_ORDER_BE)
     {
@@ -59,44 +59,44 @@ static void bitbuf_bit(output_ctx ctx, int bit)
     }
 }
 
-void output_ctx_init(output_ctx ctx,    /* IN/OUT */
+void output_ctx_init(struct output_ctx *ctx,    /* IN/OUT */
                      int flags_proto, /* IN */
-                     struct membuf *out)/* IN/OUT */
+                     struct buf *out)/* IN/OUT */
 {
     ctx->bitbuf = 0;
     ctx->bitcount = 0;
-    ctx->pos = membuf_memlen(out);
+    ctx->pos = buf_size(out);
     ctx->buf = out;
     ctx->flags_proto = flags_proto;
 }
 
-unsigned int output_get_pos(output_ctx ctx)     /* IN */
+unsigned int output_get_pos(struct output_ctx *ctx)     /* IN */
 {
     return ctx->pos;
 }
 
-void output_byte(output_ctx ctx,        /* IN/OUT */
+void output_byte(struct output_ctx *ctx,        /* IN/OUT */
                  unsigned char byte)    /* IN */
 {
     /*LOG(LOG_DUMP, ("output_byte: $%02X\n", byte)); */
-    if(ctx->pos < membuf_memlen(ctx->buf))
+    if(ctx->pos < buf_size(ctx->buf))
     {
         char *p;
-        p = membuf_get(ctx->buf);
+        p = buf_data(ctx->buf);
         p[ctx->pos] = byte;
     }
     else
     {
-        while(ctx->pos > membuf_memlen(ctx->buf))
+        while(ctx->pos > buf_size(ctx->buf))
         {
-            membuf_append_char(ctx->buf, '\0');
+            buf_append_char(ctx->buf, '\0');
         }
-        membuf_append_char(ctx->buf, byte);
+        buf_append_char(ctx->buf, byte);
     }
     ++(ctx->pos);
 }
 
-void output_word(output_ctx ctx,        /* IN/OUT */
+void output_word(struct output_ctx *ctx,        /* IN/OUT */
                  unsigned short int word)       /* IN */
 {
     output_byte(ctx, (unsigned char) (word & 0xff));
@@ -104,7 +104,7 @@ void output_word(output_ctx ctx,        /* IN/OUT */
 }
 
 
-void output_bits_flush(output_ctx ctx,  /* IN/OUT */
+void output_bits_flush(struct output_ctx *ctx,  /* IN/OUT */
                        int add_marker_bit)      /* IN */
 {
     if (add_marker_bit)
@@ -130,14 +130,14 @@ void output_bits_flush(output_ctx ctx,  /* IN/OUT */
     }
 }
 
-int output_bits_alignment(output_ctx ctx)
+int output_bits_alignment(struct output_ctx *ctx)
 {
     int alignment = (8 - ctx->bitcount) & 7;
     LOG(LOG_DUMP, ("bitbuf 0x%02X aligned %d\n", ctx->bitbuf, alignment));
     return alignment;
 }
 
-static void output_bits_int(output_ctx ctx,        /* IN/OUT */
+static void output_bits_int(struct output_ctx *ctx,        /* IN/OUT */
                             int count,     /* IN */
                             int val)       /* IN */
 {
@@ -159,7 +159,7 @@ static void output_bits_int(output_ctx ctx,        /* IN/OUT */
     }
 }
 
-void output_bits(output_ctx ctx,        /* IN/OUT */
+void output_bits(struct output_ctx *ctx,        /* IN/OUT */
                  int count,     /* IN */
                  int val)       /* IN */
 {
@@ -167,7 +167,7 @@ void output_bits(output_ctx ctx,        /* IN/OUT */
     output_bits_int(ctx, count, val);
 }
 
-void output_gamma_code(output_ctx ctx,  /* IN/OUT */
+void output_gamma_code(struct output_ctx *ctx,  /* IN/OUT */
                        int code)        /* IN */
 {
     LOG(LOG_DUMP, ("output gamma: code = %d\n", code));

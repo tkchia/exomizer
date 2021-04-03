@@ -1,5 +1,9 @@
 #ifndef ALREADY_INCLUDED_LOG
 #define ALREADY_INCLUDED_LOG
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Copyright (c) 2002, 2003 Magnus Lind.
  *
@@ -49,11 +53,10 @@ enum log_level {
     LOG_MAX = 99
 };
 
-typedef
-void log_formatter_f(FILE * out,        /* IN */
-                     enum log_level level,      /* IN */
-                     const char *context,       /* IN */
-                     const char *);     /* IN */
+typedef void log_formatter_f(FILE * out,        /* IN */
+                             enum log_level level,      /* IN */
+                             const char *context,       /* IN */
+                             const char *);     /* IN */
 
 /*
  * this log output function adds nothing
@@ -149,4 +152,7 @@ do { \
 
 void hex_dump(int level, unsigned char *p, int len);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

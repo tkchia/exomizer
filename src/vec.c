@@ -33,7 +33,7 @@
 void vec_init(struct vec *p, size_t elsize)
 {
     p->elsize = elsize;
-    membuf_init(&p->buf);
+    buf_init(&p->buf);
     p->flags = VEC_FLAG_SORTED;
 }
 
@@ -51,7 +51,7 @@ void vec_clear(struct vec *p, cb_free * f)
             f((void*)d);
         }
     }
-    membuf_clear(&p->buf);
+    buf_clear(&p->buf);
     p->flags = VEC_FLAG_SORTED;
 
 }
@@ -59,23 +59,23 @@ void vec_clear(struct vec *p, cb_free * f)
 void vec_free(struct vec *p, cb_free * f)
 {
     vec_clear(p, f);
-    membuf_free(&p->buf);
+    buf_free(&p->buf);
 }
 
-int vec_count(const struct vec *p)
+int vec_size(const struct vec *p)
 {
-    int count;
-    count = membuf_memlen(&p->buf) / p->elsize;
-    return count;
+    int size;
+    size = buf_size(&p->buf) / p->elsize;
+    return size;
 }
 
 void *vec_get(const struct vec *p, int index)
 {
     char *buf = NULL;
 
-    if(index >= 0 && index < vec_count(p))
+    if(index >= 0 && index < vec_size(p))
     {
-        buf = (char *) membuf_get(&p->buf);
+        buf = (char *) buf_data(&p->buf);
         buf += index * p->elsize;
     }
 
@@ -86,9 +86,10 @@ void *vec_set(struct vec *p, int index, const void *in)
 {
     void *buf = NULL;
 
-    if(index >= 0 && index < vec_count(p))
+    if(index >= 0 && index < vec_size(p))
     {
-        buf = membuf_memcpy(&p->buf, index * p->elsize, in, p->elsize);
+        buf = buf_replace(&p->buf, index * p->elsize, p->elsize,
+                          in, p->elsize);
     }
 
     return buf;
@@ -96,28 +97,27 @@ void *vec_set(struct vec *p, int index, const void *in)
 
 void *vec_insert(struct vec *p, int index, const void *in)
 {
-    void *buf = NULL;
+    char *buf = NULL;
 
-    if(index >= 0 && index <= vec_count(p))
+    if(index >= 0 && index <= vec_size(p))
     {
-        buf = membuf_insert(&p->buf, index * p->elsize, in, p->elsize);
+        buf = buf_replace(&p->buf, index * p->elsize, 0, in, p->elsize);
     }
-
     return buf;
 }
 
 void vec_remove(struct vec *p, int index)
 {
-    if(index >= 0 && index < vec_count(p))
+    if(index >= 0 && index < vec_size(p))
     {
-        membuf_remove(&p->buf, index * p->elsize, p->elsize);
+        buf_replace(&p->buf, index * p->elsize, p->elsize, NULL, 0);
     }
 }
 
 void *vec_push(struct vec *p, const void *in)
 {
     void *out;
-    out = membuf_append(&p->buf, in, p->elsize);
+    out = buf_append(&p->buf, in, p->elsize);
     p->flags &= ~VEC_FLAG_SORTED;
 
     return out;
@@ -132,7 +132,7 @@ int vec_find(const struct vec *p, cb_cmp * f, const void *in)
     {
         int hi;
         lo = 0;
-        hi = vec_count(p) - 1;
+        hi = vec_size(p) - 1;
         while(lo <= hi)
         {
             int next;
@@ -201,7 +201,7 @@ int vec_insert_uniq(struct vec *p, cb_cmp * f, const void *in, void **outp)
 
 void vec_sort(struct vec *p, cb_cmp * f)
 {
-    qsort(membuf_get(&p->buf), vec_count(p), p->elsize, f);
+    qsort(buf_data(&p->buf), vec_size(p), p->elsize, f);
     p->flags |= VEC_FLAG_SORTED;
 }
 
@@ -215,9 +215,10 @@ void vec_get_iterator(const struct vec *p, struct vec_iterator *i)
 void *vec_iterator_next(struct vec_iterator *i)
 {
     void *out;
-    int count = vec_count(i->vec);
-    if (i->pos >= count)
+    int size = vec_size(i->vec);
+    if (i->pos >= size)
     {
+        i->pos = 0;
         return NULL;
     }
     out = vec_get(i->vec, i->pos);
@@ -227,12 +228,12 @@ void *vec_iterator_next(struct vec_iterator *i)
 
 void vec_fprint(FILE *f, const struct vec *a, cb_fprint *fprint)
 {
-    struct vec_iterator i[1];
+    struct vec_iterator i;
     int *e;
     char *glue = "[";
 
-    vec_get_iterator(a, i);
-    while((e = vec_iterator_next(i)) != NULL)
+    vec_get_iterator(a, &i);
+    while((e = vec_iterator_next(&i)) != NULL)
     {
         fprintf(f, "%s", glue);
         fprint(f, e);
@@ -243,19 +244,19 @@ void vec_fprint(FILE *f, const struct vec *a, cb_fprint *fprint)
 
 int vec_equals(const struct vec *a, const struct vec *b, cb_cmp *cmp)
 {
-    struct vec_iterator ia[1];
-    struct vec_iterator ib[1];
+    struct vec_iterator ia;
+    struct vec_iterator ib;
     void *ea;
     void *eb;
     int equal = 1;
 
-    vec_get_iterator(a, ia);
-    vec_get_iterator(b, ib);
+    vec_get_iterator(a, &ia);
+    vec_get_iterator(b, &ib);
 
     while(equal)
     {
-        ea = vec_iterator_next(ia);
-        eb = vec_iterator_next(ib);
+        ea = vec_iterator_next(&ia);
+        eb = vec_iterator_next(&ib);
 
         if(ea == NULL && eb == NULL)
         {

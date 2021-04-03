@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_SEARCH
 #define ALREADY_INCLUDED_SEARCH
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2002 - 2005 Magnus Lind.
@@ -32,8 +35,8 @@
 #include "output.h"
 
 struct encode_int_bucket {
-    unsigned short start;
-    unsigned short end;
+    unsigned int start;
+    unsigned int end;
 };
 
 struct encode_match_buckets {
@@ -43,27 +46,25 @@ struct encode_match_buckets {
 
 struct search_node {
     int index;
-    match match;
+    struct match match;
     unsigned int total_offset;
     float total_score;
     struct search_node *prev;
+    unsigned int latest_offset;
 };
 
-struct _encode_match_data {
-    output_ctxp out;
+struct encode_match_data {
+    struct output_ctx *out;
     void *priv;
 };
 
-typedef struct _encode_match_data encode_match_data[1];
-typedef struct _encode_match_data *encode_match_datap;
-
 /* example of what may be used for priv data
  * field in the encode_match_data struct */
-typedef
-float encode_int_f(int val, void *priv, output_ctxp out,
-                   struct encode_int_bucket *eibp);       /* IN */
+typedef float encode_int_f(int val, void *priv,
+                           struct output_ctx *out,
+                           struct encode_int_bucket *eibp);       /* IN */
 
-struct _encode_match_priv {
+struct encode_match_priv {
     int flags_proto;
     int flags_notrait;
     int lit_num;
@@ -78,40 +79,39 @@ struct _encode_match_priv {
     void *offset_f_priv;
     void *len_f_priv;
 
-    output_ctxp out;
+    struct output_ctx *out;
 };
 
-typedef struct _encode_match_priv encode_match_priv[1];
-typedef struct _encode_match_priv *encode_match_privp;
 /* end of example */
 
-typedef
-float encode_match_f(const_matchp mp,
-                     encode_match_data emd,     /* IN */
-                     struct encode_match_buckets *embp);    /* OUT */
+typedef float encode_match_f(const struct match *mp,
+                             struct encode_match_data *emd,     /* IN */
+                             unsigned int prev_offset,
+                             struct encode_match_buckets *embp);    /* OUT */
 
 void search_node_dump(const struct search_node *snp);        /* IN */
 
 /* Dont forget to free the (*result) after calling */
-void search_buffer(match_ctx ctx,       /* IN */
+void search_buffer(struct match_ctx *ctx,       /* IN */
                    encode_match_f * f,  /* IN */
-                   encode_match_data emd,       /* IN */
+                   struct encode_match_data *emd,       /* IN */
+                   int flags_proto,             /* IN */
                    int flags_notrait,           /* IN */
                    int max_sequence_length,     /* IN */
-                   int pass,   /* IN */
+                   int greedy,   /* IN */
                    struct search_node **result);       /* IN */
 
-struct _matchp_snp_enum {
+struct match_snp_enum {
     const struct search_node *startp;
     const struct search_node *currp;
 };
 
-typedef struct _matchp_snp_enum matchp_snp_enum[1];
-typedef struct _matchp_snp_enum *matchp_snp_enump;
+void match_snp_get_enum(const struct search_node *snp,   /* IN */
+                        struct match_snp_enum *snpe); /* IN/OUT */
 
-void matchp_snp_get_enum(const struct search_node *snp,   /* IN */
-                         matchp_snp_enum snpe); /* IN/OUT */
+const struct match *match_snp_enum_get_next(void *matchp_snp_enum);
 
-const_matchp matchp_snp_enum_get_next(void *matchp_snp_enum);
-
+#ifdef __cplusplus
+}
+#endif
 #endif

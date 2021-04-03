@@ -8,145 +8,80 @@ LDFLAGS = -s
 #CFLAGS = -g $(WFLAGS)
 #LDFLAGS = -g
 
-TEST_OBJS = ../src/6502emu.o ../src/exo_util.o ../src/log.o ../src/areatrace.o ../src/vec.o ../src/membuf_io.o ../src/membuf.o
+TEST_OBJS = ../src/6502emu.o ../src/exo_util.o ../src/log.o ../src/areatrace.o ../src/vec.o ../src/buf_io.o ../src/buf.o ../src/table.o ../src/perf.o
 
-SOURCES = main.os exodecrunch.os
-SOURCES256 = main.os exodecrunch.os256
-SOURCESc = main.os exodecrunch.osc
-SOURCES256c = main.os exodecrunch.os256c
-SOURCESi = main.os exodecrunch.osi
-SOURCESi256 = main.os exodecrunch.osi256
-SOURCESic = main.os exodecrunch.osic
-SOURCESi256c = main.os exodecrunch.osi256c
-SOURCESF = mainf.os krilldecr.os
 SOURCES1 = main1.os exostreamdecr1.os
 SOURCES2 = main2.os exostreamdecr2.os
-NAME = test.prg
-NAME256 = test256.prg
-NAMEc = testc.prg
-NAME256c = test256c.prg
-NAMEi = testi.prg
-NAMEi256 = testi256.prg
-NAMEic = testic.prg
-NAMEi256c = testi256c.prg
-NAMEF = testf.prg
-NAME1 = test1.prg
-NAME2 = test2.prg
 
-.PRECIOUS: %.exo %.prg $(TEST_OBJS)
-.INTERMEDIATE: %.exo.out
+NAME1 = test.1stream.prg
+NAME2 = test.2stream.prg
 
-build: $(NAME) $(NAME256) $(NAMEc) $(NAME256c) $(NAMEi) $(NAMEi256) $(NAMEic) $(NAMEi256c) $(NAMEF) $(NAME1) $(NAME2)
+permutate2 = $(if $(strip $(2)), $(foreach res, $(call permutate2, $(firstword $(2)), $(wordlist 2, $(words $(2)), $(2))), $(join $(res), _) $(join $(res), $(1))), _ $(1))
+
+permutate = $(if $(strip $(1)), $(call permutate2, $(firstword $(1)), $(wordlist 2, $(words $(1)), $(1))))
+
+VARIANTS = $(call permutate, i e M c 4 o f)
+
+VARIANT_OPT = c^-DLITERAL_SEQUENCES_NOT_USED=1^-c M^-DMAX_SEQUENCE_LENGTH_256=1^-M256 i^-DINLINE_GET_BITS=1^ e^-DENABLE_SPLIT_ENCODING=1^ o^-DDONT_REUSE_OFFSET=1^-P-32 4^-DEXTRA_TABLE_ENTRY_FOR_LENGTH_THREE=1^-P+16 f^-DDECRUNCH_FORWARDS=1^-f
+
+echo = $(or $(info $(1) $(2)), $(2))
+
+variant = $(suffix $(basename $(1)))
+
+asmopt = $(filter-out , $(foreach opt, $(VARIANT_OPT), $(if $(findstring $(word 1, $(subst ^, , $(opt))), $(1)), $(word 2, $(subst ^, , $(opt))))))
+
+exoopt = $(filter-out , $(foreach opt, $(VARIANT_OPT), $(if $(findstring $(word 1, $(subst ^, , $(opt))), $(1)), $(word 3, $(subst ^, , $(opt))))))
+
+.PHONY: assert.data%
+.PRECIOUS: %.exo %stream.exo %.os test%.prg $(TEST_OBJS)
+.SECONDEXPANSION:
+
+build: testrun $$(foreach variant, $$(VARIANTS) 1stream 2stream, test.$$(variant).prg data.$$(variant).exo)
+	@$(RM) *.out
+	@./testrun $(foreach variant, $(VARIANTS), test.$(variant).prg data.$(variant).exo)
+	@$(MAKE) $(foreach variant, $(VARIANTS), assert.data.$(variant).exo)
+	@./testrun $(foreach variant, 1stream 2stream, test.$(variant).prg data.$(variant).exo@0x3000)
+	@$(MAKE) $(foreach variant, 1stream 2stream, assert.data.$(variant).exo)
+
+assert.data%:
+	cmp -i0:2 data$(call variant, $@).exo.out data.bin
+	@$(RM) data$(call variant, $@).exo.out
+
+testrun.test%.prg: testrun test%.prg data%.exo
+	@./testrun test$(call variant, $@).prg data$(call variant, $@).exo
+	@cmp -i0:2 data$(call variant, $@).exo.out data.bin && $(RM) data$(call variant, $@).exo.out
+
+testrun.test%stream.prg: testrun test%stream.prg data%stream.exo
+	@./testrun test$(call variant, $@).prg data$(call variant, $@).exo@0x3000
+	@cmp -i0:2 data$(call variant, $@).exo.out data.bin && $(RM) data$(call variant, $@).exo.out
 
 testrun: testrun.o $(TEST_OBJS)
-	@echo "Linking $@"
 	@$(CC) $(LDFLAGS) -o $@ testrun.o $(TEST_OBJS)
 
-$(NAME): $(MAKEFILE) testrun data.exo $(SOURCES)
-	ld65 $(SOURCES) -o $@ -Cc64.cfg
-	./testrun $@ data.exo
-	cmp -i0:2 data.exo.out data.bin && $(RM) data.exo.out
+test%.prg: main%.os exodecrunch%.os
+	@echo "building $@"
+	@ld65 main$(call variant, $@).os exodecrunch$(call variant, $@).os -o $@ -Cc64.cfg
 
-$(NAME256): $(MAKEFILE) testrun data256.exo $(SOURCES256)
-	ld65 $(SOURCES256) -o $@ -Cc64.cfg
-	./testrun $@ data256.exo
-	cmp -i0:2 data256.exo.out data.bin && $(RM) data256.exo.out
+$(NAME1): $(SOURCES1)
+	@ld65 $(SOURCES1) -o $@ -Cc64.cfg
 
-$(NAMEc): $(MAKEFILE) testrun datac.exo $(SOURCESc)
-	ld65 $(SOURCESc) -o $@ -Cc64.cfg
-	./testrun $@ datac.exo
-	cmp -i0:2 datac.exo.out data.bin && $(RM) datac.exo.out
+$(NAME2): $(SOURCES2)
+	@ld65 $(SOURCES2) -o $@ -Cc64.cfg
 
-$(NAME256c): $(MAKEFILE) testrun data256c.exo $(SOURCES256c)
-	ld65 $(SOURCES256c) -o $@ -Cc64.cfg
-	./testrun $@ data256c.exo
-	cmp -i0:2 data256c.exo.out data.bin && $(RM) data256c.exo.out
+%.os: $$(basename $$(basename $$@)).s
+	@ca65 $(call asmopt, $(call variant, $@)) $< -o $@
 
-$(NAMEi): $(MAKEFILE) testrun data.exo $(SOURCESi)
-	ld65 $(SOURCESi) -o $@ -Cc64.cfg
-	./testrun $@ data.exo
-	cmp -i0:2 data.exo.out data.bin && $(RM) data.exo.out
-
-$(NAMEi256): $(MAKEFILE) testrun data256.exo $(SOURCESi256)
-	ld65 $(SOURCESi256) -o $@ -Cc64.cfg
-	./testrun $@ data256.exo
-	cmp -i0:2 data256.exo.out data.bin && $(RM) data256.exo.out
-
-$(NAMEic): $(MAKEFILE) testrun datac.exo $(SOURCESic)
-	ld65 $(SOURCESic) -o $@ -Cc64.cfg
-	./testrun $@ datac.exo
-	cmp -i0:2 datac.exo.out data.bin && $(RM) datac.exo.out
-
-$(NAMEi256c): $(MAKEFILE) testrun data256c.exo $(SOURCESi256c)
-	ld65 $(SOURCESi256c) -o $@ -Cc64.cfg
-	./testrun $@ data256c.exo
-	cmp -i0:2 data256c.exo.out data.bin && $(RM) data256c.exo.out
-
-$(NAMEF): $(MAKEFILE) testrun dataf.exo $(SOURCESF)
-	ld65 $(SOURCESF) -o $@ -Cc64.cfg
-	./testrun $@ dataf.exo
-	cmp -i0:2 dataf.exo.out data.bin && $(RM) dataf.exo.out
-
-$(NAME1): $(MAKEFILE) testrun streamdata.exo $(SOURCES1)
-	ld65 $(SOURCES1) -o $@ -Cc64.cfg
-	./testrun $@ streamdata.exo@0x3000
-	cmp -i0:2 streamdata.exo.out data.bin && $(RM) streamdata.exo.out
-
-$(NAME2): $(MAKEFILE) testrun streamdata.exo $(SOURCES2)
-	ld65 $(SOURCES2) -o $@ -Cc64.cfg
-	./testrun $@ streamdata.exo@0x3000
-	cmp -i0:2 streamdata.exo.out data.bin && $(RM) streamdata.exo.out
-
-%.os: %.s
-	ca65 $< -o $@
-
-%.os256c: %.s
-	ca65 -DLITERAL_SEQUENCES_NOT_USED=1 -DMAX_SEQUENCE_LENGTH_256=1 $< -o $@
-
-%.os256: %.s
-	ca65 -DMAX_SEQUENCE_LENGTH_256=1 $< -o $@
-
-%.osc: %.s
-	ca65 -DLITERAL_SEQUENCES_NOT_USED=1 $< -o $@
-
-%.osi: %.s
-	ca65 -DINLINE_GET_BITS=1 $< -o $@
-
-%.osi256c: %.s
-	ca65 -DINLINE_GET_BITS=1 -DLITERAL_SEQUENCES_NOT_USED=1 -DMAX_SEQUENCE_LENGTH_256=1 $< -o $@
-
-%.osi256: %.s
-	ca65 -DINLINE_GET_BITS=1 -DMAX_SEQUENCE_LENGTH_256=1 $< -o $@
-
-%.osic: %.s
-	ca65 -DINLINE_GET_BITS=1 -DLITERAL_SEQUENCES_NOT_USED=1 $< -o $@
 clean:
-	$(RM) testrun.o test*.prg *.os* *.exo *.exo.out testrun
+	@$(RM) testrun.o test*.prg *.os *.exo *.exo.out testrun
 
-data.exo: data.bin
-	../src/exomizer mem -q -C data.bin,0x3000 -o data.exo
+%.exo: $$(basename $$(basename $$@)).bin
+	@../src/exomizer mem $(call exoopt, $(call variant, $@)) -q $<,0x3000 -o $@
 
-data256.exo: data.bin
-	../src/exomizer mem -q -M256 -C data.bin,0x3000 -o data256.exo
-
-datac.exo: data.bin
-	../src/exomizer mem -q -c -C data.bin,0x3000 -o datac.exo
-
-data256c.exo: data.bin
-	../src/exomizer mem -q -M256 -c -C data.bin,0x3000 -o data256c.exo
-
-dataf.exo: data.bin
-	../src/exomizer mem -q -C -P0 -f data.bin,0x3000 -o dataf.exo
-
-streamdata.exo: data.bin
-	../src/exomizer raw -q -C -P0 -b -c -m 1024 data.bin,2 -o streamdata.exo
+%stream.exo: $$(basename $$(basename $$@)).bin
+	@../src/exomizer raw -P0 -b -c -m 1024 -q -C $<,2 -o $@
 
 %.o:	%.c
-	@echo "Compiling $<"
 	@$(CC) -c $(CFLAGS) $(CPPFLAGS) -o $@ $<
-
-%:	%.o
-	@$(CC) $(LDFLAGS) $< -o $@
 
 # cancel built in rule that disturb things
 %.out: %

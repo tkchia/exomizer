@@ -1,5 +1,8 @@
 #ifndef INCLUDED_INT
 #define INCLUDED_INT
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2005 Magnus Lind.
@@ -36,4 +39,7 @@ typedef unsigned char u8;
 typedef unsigned short int u16;
 typedef unsigned int u32;
 
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "int.h"
-#include "membuf.h"
+#include "buf.h"
 #include "parse.h"
 #include "asm.tab.h"
 
@@ -235,7 +235,7 @@ void scanner_init(void)
     vec_init(strdupped, sizeof(char*));
 }
 
-void asm_src_buffer_push(struct membuf *buffer)
+void asm_src_buffer_push(struct buf *buffer)
 {
     if(src_buffer_depth == MAX_SRC_BUFFER_DEPTH)
     {
@@ -243,7 +243,7 @@ void asm_src_buffer_push(struct membuf *buffer)
 	exit(1);
     }
     src_buffers[src_buffer_depth++] = YY_CURRENT_BUFFER;
-    yy_scan_bytes(membuf_get(buffer), membuf_memlen(buffer));
+    yy_scan_bytes(buf_data(buffer), buf_size(buffer));
 }
 
 static char *strdupped_get(char *text)

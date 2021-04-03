@@ -30,6 +30,7 @@
 ; -- r_in_len, done /* required, length of decrunched data area */
 ; -- i_literal_sequences_used, done /* defined if true, otherwise not */
 ; -- i_max_sequence_length_256, done /* defined if true, otherwise not */
+; -- i_reuse_offset, done /* defined if true, otherwise not */
 ; -- i_ram_enter, done /* undef=c_rom_config_value */
 ; -- i_irq_enter, done /* undef=on, 0=off, 1=on */
 ; -- i_ram_during, done /* undef=auto
@@ -86,6 +87,7 @@
   zp_src_lo = $82
   zp_src_hi = zp_src_lo + 1
   zp_bits_hi = $84
+  zp_ro_state = $85
 
   c_basic_start    = $0501
   c_end_of_mem_rom = $c000
@@ -98,11 +100,12 @@
   c_default_table = $b800
 .ELIF(r_target == 20 || r_target == 23 || r_target == 52 || r_target == 55 ||
       r_target == 64 || r_target == 128 || r_target == 4032)
-  zp_len_lo = $a7
-  zp_len_hi = $9e
+  zp_len_lo = $9e
+  zp_len_hi = $9f
   zp_src_lo = $ae
   zp_src_hi = zp_src_lo + 1
-  zp_bits_hi = $9f
+  zp_bits_hi = $a7
+  zp_ro_state = $a8
 
   .IF(r_target == 20)
   c_basic_start    = $1001
@@ -180,11 +183,12 @@
   c_default_table = $027a
   .ENDIF
 .ELIF(r_target == 16 || r_target == 4)
-  zp_len_lo = $a7
-  zp_len_hi = $2e
-  zp_src_lo = $9d
+  zp_len_lo = $d8
+  zp_len_hi = $d9
+  zp_src_lo = $da
   zp_src_hi = zp_src_lo + 1
-  zp_bits_hi = $2d
+  zp_bits_hi = $dc
+  zp_ro_state = $dd
 
   .IF(r_target == 16)
   c_basic_start    = $1001
@@ -216,6 +220,7 @@
   zp_src_lo = $ed
   zp_src_hi = zp_src_lo + 1
   zp_bits_hi = $ef
+  zp_ro_state = $fa
 
   c_basic_start    = $0801
   c_end_of_mem_rom = $9600
@@ -232,6 +237,7 @@
   zp_src_lo = $f9
   zp_src_hi = zp_src_lo + 1
   zp_bits_hi = $f8
+  zp_ro_state = $f9
 
   c_end_of_mem_rom = $a000
   c_effect_color   = $d017
@@ -247,6 +253,7 @@
   zp_src_lo = $72
   zp_src_hi = zp_src_lo + 1
   zp_bits_hi = $74
+  zp_ro_state = $75
 
   c_basic_start    = $1900
   c_end_of_mem_rom = $7c00
@@ -345,9 +352,14 @@ transfer_len ?= 0
 .ENDIF
 
 .IF(!.DEFINED(i_line_number))
-  i_line_number = 30
+  i_line_number = 31
 .ENDIF
 
+.IF(.DEFINED(i_fourth_offset_table))
+encoded_entries = 68
+.ELSE
+encoded_entries = 52
+.ENDIF
 ; -------------------------------------------------------------------
 ; -- validate some input parameters ---------------------------------
 ; -------------------------------------------------------------------
@@ -382,13 +394,15 @@ v_highest_addr = (.INCWORD("crunched_data", -2) + 65535) % 65536 + 1
 ; -------------------------------------------------------------------
 ; -- file2_start_hook and stage2_exit_hook --------------------------
 ; -------------------------------------------------------------------
-.IF(i_effect2 == 0 && .DEFINED(c_effect_char))
+.IF(!.DEFINED(i_effect_custom) && i_effect2 == 0 && .DEFINED(c_effect_char))
 file2_start_hook = 1
   .MACRO("file2_start_hook")
     .IF(v_safety_addr < file2start && ; if we are transferring anyhow
         c_effect_char < v_safety_addr &&
         (file2start - c_effect_char < 257 ||
-         file2start - v_safety_addr > 256))
+         file2start - v_safety_addr > 256) &&
+        (i_table_addr + 3 * encoded_entries < c_effect_char ||
+         i_table_addr > v_highest_addr))
 raw_transfer_len = file2start - c_effect_char
 lowest_addr = c_effect_char
     .ENDIF
@@ -640,7 +654,7 @@ oric_ROM11:
         ora #$10
         sta c_effect_color
       .ELIF(r_target == $bbcb)
-	txa
+        txa
         and #$1f
         ora #$80
         sta c_effect_color
@@ -1205,11 +1219,6 @@ stage2start:
         bne copy2_loop1
 .ENDIF
 ; -------------------------------------------------------------------
-.IF(.DEFINED(i_fourth_offset_table))
-encoded_entries = 68
-.ELSE
-encoded_entries = 52
-.ENDIF
 tabl_bi = i_table_addr
 tabl_lo = i_table_addr + encoded_entries
 tabl_hi = i_table_addr + 2 * encoded_entries
@@ -1261,12 +1270,12 @@ no_fixup_lohi:
         .IF(.DEFINED(stage2_exit_hook))
           .INCLUDE("stage2_exit_hook")
         .ENDIF
-        ldy #(v_highest_addr - 1) % 256
 ; ###################################################################
 .IF(i_perf == -1)
 ; ###################################################################
 ; ## tiny start #####################################################
 ; ###################################################################
+        ldy #(v_highest_addr - 1) % 256
         jmp begin
 ; -------------------------------------------------------------------
 ; -- end of stage 2 -------------------------------------------------
@@ -1326,6 +1335,10 @@ get_byte_fixup:
 ; x must be #0 when entering and contains the length index + 1
 ; when exiting or 0 for literal byte
 begin:
+.IF(.DEFINED(i_reuse_offset))
+        ror <zp_ro_state
+.ENDIF
+next_bit:
         asl <zp_bitbuf
         bne nofetch8
         jsr get_crunched_byte
@@ -1333,7 +1346,7 @@ begin:
         sta <zp_bitbuf
 nofetch8:
         inx
-        bcc begin
+        bcc next_bit
 ; -------------------------------------------------------------------
 ; check for literal byte (4 bytes)
 ;
@@ -1345,7 +1358,8 @@ nofetch8:
         cpx #$12
         bcs exit_or_lit_seq
 ; -------------------------------------------------------------------
-; calulate length of sequence (zp_len) (22(15) bytes)
+; calulate length of sequence (zp_len) (26(16) bytes)
+; exit with len_lo in X
 ;
         lda #0
         sta <zp_bits_hi
@@ -1357,13 +1371,32 @@ nofetch8:
         lda <zp_bits_hi
         adc tabl_hi - 2,x       ; c = 0 after this.
         sta <zp_len_hi
-; -------------------------------------------------------------------
-; here we decide what offset table to use (27(26) bytes)
-; z-flag reflects zp_len_hi here
-;
         ldx <zp_len_lo
 .ELSE
         tax
+.ENDIF
+.IF(!.DEFINED(i_max_sequence_length_256))
+        lda #0
+.ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; here we decide to reuse latest offset or not (13(15) bytes)
+;
+        bit <zp_ro_state
+        bpl no_reuse
+        bvs no_reuse
+.IF(.DEFINED(i_max_sequence_length_256))
+        lda #$00                ; fetch one bit
+.ENDIF
+        jsr gb_next
+        bne copy_next           ; bit != 0 => C=0, reuse previous offset
+no_reuse:
+.ENDIF
+; -------------------------------------------------------------------
+; here we decide what offset table to use (17(15) bytes)
+;
+.IF(!.DEFINED(i_max_sequence_length_256))
+        sta <zp_bits_hi
 .ENDIF
         lda #$f1
 .IF(.DEFINED(i_fourth_offset_table))
@@ -1379,12 +1412,8 @@ gbnc2_next:
         clc
         tax
 ; -------------------------------------------------------------------
-; calulate absolute offset (zp_src) (24 bytes)
+; calulate absolute offset (zp_src) (20 bytes)
 ;
-.IF(!.DEFINED(i_max_sequence_length_256))
-        lda #0
-        sta <zp_bits_hi
-.ENDIF
         lda tabl_bi,x
         jsr get_bits
         adc tabl_lo,x
@@ -1394,7 +1423,7 @@ gbnc2_next:
         adc <zp_dest_hi
         sta <zp_src_hi
 ; -------------------------------------------------------------------
-; prepare for copy loop (4(2) bytes)
+; prepare for copy loop (2 bytes)
 ;
 pre_copy:
         ldx <zp_len_lo
@@ -1466,6 +1495,7 @@ tabl_bit:
 ; ###################################################################
 ; ## small start ####################################################
 ; ###################################################################
+        ldy #(v_highest_addr - 1) % 256
         txa
         jmp begin_stx
 ; -------------------------------------------------------------------
@@ -1530,12 +1560,19 @@ literal_start1:
         tya
         bne no_hi_decr
         dec <zp_dest_hi
+.IF(.DEFINED(i_reuse_offset))
+        dec <zp_src_hi
+.ENDIF
 no_hi_decr:
         dey
 ; -------------------------------------------------------------------
+; fetch sequence length index (14(16) bytes)
 ; x must be #0 when entering and contains the length index + 1
 ; when exiting or 0 for literal byte
 begin:
+.IF(.DEFINED(i_reuse_offset))
+        ror <zp_ro_state
+.ENDIF
         dex
 no_literal1:
         asl <zp_bitbuf
@@ -1556,7 +1593,7 @@ nofetch8:
         cpx #$11
         bcs exit_or_lit_seq
 ; -------------------------------------------------------------------
-; calulate length of sequence (zp_len) (22(15) bytes)
+; calulate length of sequence (zp_len) (22(12) bytes)
 ;
         lda tabl_bi - 1,x
         jsr get_bits
@@ -1566,13 +1603,32 @@ nofetch8:
         lda <zp_bits_hi
         adc tabl_hi - 1,x       ; c = 0 after this.
         sta <zp_len_hi
-; -------------------------------------------------------------------
-; here we decide what offset table to use (27(26) bytes)
-; z-flag reflects zp_len_hi here
-;
         ldx <zp_len_lo
 .ELSE
         tax
+.ENDIF
+.IF(!.DEFINED(i_max_sequence_length_256))
+        lda #0
+.ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; here we decide to reuse latest offset or not (13(15) bytes)
+;
+        bit <zp_ro_state
+        bpl no_reuse
+        bvs no_reuse
+.IF(.DEFINED(i_max_sequence_length_256))
+        lda #$00                ; fetch one bit
+.ENDIF
+        jsr gb_next
+        bne copy_next           ; bit != 0 => C=0, reuse previous offset
+no_reuse:
+.ENDIF
+; -------------------------------------------------------------------
+; here we decide what offset table to use (17(15) bytes)
+;
+.IF(!.DEFINED(i_max_sequence_length_256))
+        sta <zp_bits_hi
 .ENDIF
         lda #$f1
 .IF(.DEFINED(i_fourth_offset_table))
@@ -1603,7 +1659,7 @@ gbnc2_next:
         adc <zp_dest_hi
         sta <zp_src_hi
 ; -------------------------------------------------------------------
-; prepare for copy loop (4(2) bytes)
+; prepare for copy loop (2 bytes)
 ;
 pre_copy:
         ldx <zp_len_lo
@@ -1681,6 +1737,7 @@ tabl_bit:
 ; ###################################################################
 ; ## quick start ####################################################
 ; ###################################################################
+        ldy #(v_highest_addr - 1) % 256
         txa
         jmp begin_stx
 ; -------------------------------------------------------------------
@@ -1745,12 +1802,19 @@ literal_start1:
         tya
         bne no_hi_decr
         dec <zp_dest_hi
+.IF(.DEFINED(i_reuse_offset))
+        dec <zp_src_hi
+.ENDIF
 no_hi_decr:
         dey
 ; -------------------------------------------------------------------
+; fetch sequence length index (14(16) bytes)
 ; x must be #0 when entering and contains the length index + 1
 ; when exiting or 0 for literal byte
 begin:
+.IF(.DEFINED(i_reuse_offset))
+        ror <zp_ro_state
+.ENDIF
         dex
 no_literal1:
         asl <zp_bitbuf
@@ -1771,7 +1835,7 @@ nofetch8:
         cpx #$11
         bcs exit_or_lit_seq
 ; -------------------------------------------------------------------
-; calulate length of sequence (zp_len) (18(11) bytes)
+; calulate length of sequence (zp_len) (22(12) bytes)
 ;
         lda tabl_bi - 1,x
         jsr get_bits
@@ -1781,13 +1845,25 @@ nofetch8:
         lda <zp_bits_hi
         adc tabl_hi - 1,x       ; c = 0 after this.
         sta <zp_len_hi
-; -------------------------------------------------------------------
-; here we decide what offset table to use (27(26) bytes)
-; z-flag reflects zp_len_hi here
-;
         ldx <zp_len_lo
 .ELSE
         tax
+.ENDIF
+.IF(!.DEFINED(i_max_sequence_length_256))
+        lda #0
+.ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; here we decide to reuse latest offset or not (4 bytes)
+        bit <zp_ro_state
+        bmi test_reuse
+no_reuse:
+.ENDIF
+; -------------------------------------------------------------------
+; here we decide what offset table to use (27(25) bytes)
+;
+.IF(!.DEFINED(i_max_sequence_length_256))
+        sta <zp_bits_hi
 .ENDIF
         lda #$e1
 .IF(.DEFINED(i_fourth_offset_table))
@@ -1810,12 +1886,8 @@ gbnc2_ok:
         bcs gbnc2_next
         tax
 ; -------------------------------------------------------------------
-; calulate absolute offset (zp_src) (24 bytes)
+; calulate absolute offset (zp_src) (20 bytes)
 ;
-.IF(!.DEFINED(i_max_sequence_length_256))
-        lda #0
-        sta <zp_bits_hi
-.ENDIF
         lda tabl_bi,x
         jsr get_bits
         adc tabl_lo,x
@@ -1862,6 +1934,19 @@ get_literal_byte:
         jsr get_crunched_byte
         bcs literal_byte_gotten
 .ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; test for offset reuse (11 bytes)
+;
+test_reuse:
+        bvs no_reuse
+.IF(.DEFINED(i_max_sequence_length_256))
+        lda #$00                ; fetch one bit
+.ENDIF
+        jsr gb_next
+        beq no_reuse            ; bit == 0 => C=0, no reuse
+        bne copy_next           ; bit != 0 => C=0, reuse previous offset
+.ENDIF
 ; -------------------------------------------------------------------
 ; exit or literal sequence handling (16(12) bytes)
 ;
@@ -1903,13 +1988,14 @@ tabl_bit:
 ; ###################################################################
 ; ## fast start #####################################################
 ; ###################################################################
+        ldy #v_highest_addr % 256
         txa
         jmp begin_stx
 ; -------------------------------------------------------------------
 ; -- end of stage 2 -------------------------------------------------
 ; -------------------------------------------------------------------
         .INCBIN("crunched_data", max_transfer_len + 2, 1) ; => zp_bitbuf
-        .WORD((((v_highest_addr - 1) % 65536) / 256) * 256) ; => zp_dest_lo/hi
+        .WORD(((v_highest_addr % 65536) / 256) * 256) ; => zp_dest_lo/hi
 stage2end:
         .ORG($0100)
 ; -------------------------------------------------------------------
@@ -1962,18 +2048,24 @@ get_byte_fixup:
 ; copy one literal byte to destination (11 bytes)
 ;
 literal_start1:
-        jsr get_crunched_byte
-        sta (zp_dest_lo),y
         tya
         bne no_hi_decr
         dec <zp_dest_hi
+.IF(.DEFINED(i_reuse_offset))
+        dec <zp_src_hi
+.ENDIF
 no_hi_decr:
         dey
+        jsr get_crunched_byte
+        sta (zp_dest_lo),y
 ; -------------------------------------------------------------------
-; fetch sequence length index (22 bytes)
+; fetch sequence length index (22(24) bytes)
 ; x must be #0 when entering and contains the length index + 1
 ; when exiting or 0 for literal byte
 begin:
+.IF(.DEFINED(i_reuse_offset))
+        ror <zp_ro_state
+.ENDIF
         asl <zp_bitbuf
         beq fetch8
         bcs literal_start1
@@ -2000,7 +2092,7 @@ nofetch8:
         cpx #$11
         bcs exit_or_lit_seq
 ; -------------------------------------------------------------------
-; calulate length of sequence (zp_len) (18(11) bytes)
+; calulate length of sequence (zp_len) (22(12) bytes)
 ;
         lda tabl_bi - 1,x
         jsr get_bits
@@ -2010,13 +2102,25 @@ nofetch8:
         lda <zp_bits_hi
         adc tabl_hi - 1,x       ; c = 0 after this.
         sta <zp_len_hi
-; -------------------------------------------------------------------
-; here we decide what offset table to use (27(26) bytes)
-; z-flag reflects zp_len_hi here
-;
         ldx <zp_len_lo
 .ELSE
         tax
+.ENDIF
+.IF(!.DEFINED(i_max_sequence_length_256))
+        lda #0
+.ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; here we decide to reuse latest offset or not (4 bytes)
+        bit <zp_ro_state
+        bmi test_reuse
+no_reuse:
+.ENDIF
+; -------------------------------------------------------------------
+; here we decide what offset table to use (27(25) bytes)
+;
+.IF(!.DEFINED(i_max_sequence_length_256))
+        sta <zp_bits_hi
 .ENDIF
         lda #$e1
 .IF(.DEFINED(i_fourth_offset_table))
@@ -2039,12 +2143,8 @@ gbnc2_ok:
         bcs gbnc2_next
         tax
 ; -------------------------------------------------------------------
-; calulate absolute offset (zp_src) (24(20) bytes)
+; calulate absolute offset (zp_src) (20 bytes)
 ;
-.IF(!.DEFINED(i_max_sequence_length_256))
-        lda #0
-        sta <zp_bits_hi
-.ENDIF
         lda tabl_bi,x
         jsr get_bits
         adc tabl_lo,x
@@ -2063,16 +2163,16 @@ pre_copy:
 ;
 copy_next:
         tya
-        beq sta_decr_hi_dey
+        beq copy_decr_hi
 copy_skip_hi:
+        dey
+        beq tya_loop
 .IF(.DEFINED(i_literal_sequences_used))
         bcs get_literal_byte1
 .ENDIF
         lda (zp_src_lo),y
 literal_byte_gotten1:
         sta (zp_dest_lo),y
-        dey
-        beq dex_sta_decr_hi_dey
         dex
         bne copy_skip_hi
 after_len_lo:
@@ -2084,12 +2184,25 @@ begin_stx:
         beq begin
 .IF(!.DEFINED(i_max_sequence_length_256))
         dec <zp_len_hi
-        jmp copy_skip_hi
+        jmp copy_next
 .ENDIF
 .IF(.DEFINED(i_literal_sequences_used))
 get_literal_byte1:
         jsr get_crunched_byte
         bcs literal_byte_gotten1
+.ENDIF
+.IF(.DEFINED(i_reuse_offset))
+; -------------------------------------------------------------------
+; test for offset reuse (11 bytes)
+;
+test_reuse:
+        bvs no_reuse
+.IF(.DEFINED(i_max_sequence_length_256))
+        lda #$00                ; fetch one bit
+.ENDIF
+        jsr gb_next
+        beq no_reuse            ; bit == 0 => C=0, no reuse
+        bne copy_next           ; bit != 0 => C=0, reuse previous offset
 .ENDIF
 ; -------------------------------------------------------------------
 ; exit or literal sequence handling (16(12) bytes)
@@ -2114,22 +2227,19 @@ decr_exit:
 ; -------------------------------------------------------------------
 ; main copy loop 2 (16 bytes)
 ;
-dex_sta_decr_hi_dey:
-        dex
-        beq after_len_lo
-sta_decr_hi_dey:
+tya_loop:
 .IF(.DEFINED(i_literal_sequences_used))
         bcs get_literal_byte2
 .ENDIF
         lda (zp_src_lo),y
 literal_byte_gotten2:
         sta (zp_dest_lo),y
+        dex
+        beq after_len_lo
+copy_decr_hi:
         dec <zp_dest_hi
         dec <zp_src_hi
-        dey
-        dex
         bne copy_skip_hi
-        beq after_len_lo
 .IF(.DEFINED(i_literal_sequences_used))
 get_literal_byte2:
         jsr get_crunched_byte

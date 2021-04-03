@@ -27,10 +27,10 @@
 
 #include "areatrace.h"
 
-void areatrace_init(struct areatrace at[1])
+void areatrace_init(struct areatrace *at)
 {
     vec_init(&at->areas, sizeof(u16));
-    membuf_atleast(&at->areas.buf, 64);
+    buf_reserve(&at->areas.buf, 64);
 }
 
 void areatrace_free(struct areatrace *at)
@@ -42,7 +42,7 @@ void areatrace_merge_overlapping(struct areatrace *at)
 {
     struct vec *areas = &at->areas;
     int i = 1;
-    int size = vec_count(areas) - 1;
+    int size = vec_size(areas) - 1;
 
     while (i < size)
     {
@@ -116,7 +116,7 @@ static int areatrace_addr_cb_cmp(const void *a, const void *b)
 static int areas_next_start_pos(struct vec *areas, int pos, u16 address)
 {
     int result = -1;
-    for (pos = pos & ~1; pos < vec_count(areas); pos += 2)
+    for (pos = pos & ~1; pos < vec_size(areas); pos += 2)
     {
         u16 *next_addr = vec_get(areas, pos);
         if (*next_addr > address + 1)

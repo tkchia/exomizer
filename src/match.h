@@ -1,5 +1,9 @@
 #ifndef ALREADY_INCLUDED_MATCH
 #define ALREADY_INCLUDED_MATCH
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Copyright (c) 2002 - 2005, 2013 Magnus Lind.
  *
@@ -28,17 +32,14 @@
  */
 
 #include "chunkpool.h"
-#include "membuf.h"
+#include "buf.h"
+#include "vec.h"
 
 struct match {
-    unsigned short int offset;
+    unsigned int offset;
     unsigned short int len;
-    struct match *next;
+    const struct match *next;
 };
-
-typedef struct match match[1];
-typedef struct match *matchp;
-typedef const struct match *const_matchp;
 
 struct pre_calc {
     struct match_node *single;
@@ -46,51 +47,61 @@ struct pre_calc {
 };
 
 struct match_ctx {
-    struct chunkpool m_pool[1];
-    struct pre_calc (*info)[1];
+    struct chunkpool m_pool;
+    struct pre_calc *info;
     unsigned short int *rle;
     unsigned short int *rle_r;
     const unsigned char *buf;
+    const unsigned char *noread_buf;
     int len;
     int max_offset;
     int max_len;
 };
 
-typedef struct match_ctx match_ctx[1];
-typedef struct match_ctx *match_ctxp;
-
-void match_ctx_init(match_ctx ctx,          /* IN/OUT */
-                    struct membuf *inbuf,   /* IN */
+void match_ctx_init(struct match_ctx *ctx,          /* IN/OUT */
+                    const struct buf *inbuf,   /* IN */
+                    const struct buf *noread_inbuf,   /* IN */
                     int max_len,            /* IN */
                     int max_offset,         /* IN */
                     int favor_speed);       /* IN */
 
-void match_ctx_free(match_ctx ctx);     /* IN/OUT */
+void match_ctx_free(struct match_ctx *ctx);     /* IN/OUT */
 
 /* this needs to be called with the indexes in
  * reverse order */
-const_matchp matches_get(match_ctx ctx, /* IN/OUT */
-                         int index);     /* IN */
+const struct match *matches_get(const struct match_ctx *ctx, /* IN/OUT */
+                                int index);     /* IN */
 
-void match_delete(match_ctx ctx,        /* IN/OUT */
-                  matchp mp);   /* IN */
+void match_delete(struct match_ctx *ctx,        /* IN/OUT */
+                  struct match *mp);   /* IN */
 
-struct matchp_cache_enum {
-    match_ctxp ctx;
-    const_matchp next;
-    match tmp1;
-    match tmp2;
+struct match_cache_enum {
+    const struct match_ctx *ctx;
+    struct match tmp1;
+    struct match tmp2;
     int pos;
 };
 
-typedef struct matchp_cache_enum matchp_cache_enum[1];
-typedef struct matchp_cache_enum *matchp_cache_enump;
+typedef const struct match *match_enum_next_f(void *match_enum_data);
 
-void matchp_cache_get_enum(match_ctx ctx,       /* IN */
-                           matchp_cache_enum mpce);     /* IN/OUT */
+void match_cache_get_enum(struct match_ctx *ctx,       /* IN */
+                          struct match_cache_enum *mpce);     /* IN/OUT */
 
-typedef const_matchp matchp_enum_get_next_f(void *matchp_enum); /* IN/OUT */
+const struct match *match_cache_enum_get_next(void *match_cache_enum); /* IN */
 
-const_matchp matchp_cache_enum_get_next(void *matchp_cache_enum);       /* IN */
+struct match_concat_enum {
+    struct vec_iterator enum_iterator;
+    match_enum_next_f *next_f;
+    void *enum_current;
+};
 
+void match_concat_get_enum(match_enum_next_f *next_f,
+                           struct vec *data_vec,
+                           struct match_concat_enum *mpcce);
+
+const struct match *match_concat_enum_get_next(void *match_concat_enum); /*IN*/
+
+#ifdef __cplusplus
+}
+#endif
 #endif

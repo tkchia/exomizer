@@ -1,5 +1,8 @@
 #ifndef ALREADY_INCLUDED_DESFX
 #define ALREADY_INCLUDED_DESFX
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * Copyright (c) 2007 Magnus Lind.
@@ -32,4 +35,7 @@
 
 u16 decrunch_sfx(u8 mem[65536], u16 run, int *start, int *end, u32 *cycles);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

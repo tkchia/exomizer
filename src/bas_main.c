@@ -358,22 +358,22 @@ int main(int argc, char *argv[])
 
     for(c = 0; c < infilec; ++c)
     {
-        struct bprg_ctx ctx[1];
+        struct bprg_ctx ctx;
         char buf[1000];
 
-        bprg_init(ctx, infilev[c]);
+        bprg_init(&ctx, infilev[c]);
 
         if(remarks)
         {
             LOG(LOG_NORMAL, (" - removing remarks and spaces"));
-            bprg_rem_remove(ctx);
+            bprg_rem_remove(&ctx);
             LOG(LOG_NORMAL, (", done.\n"));
         }
 
         if(renumber || reNumber)
         {
             LOG(LOG_NORMAL, (" - renumbering basic lines"));
-            bprg_renumber(ctx, renargs[0], renargs[1], renflags);
+            bprg_renumber(&ctx, renargs[0], renargs[1], renflags);
             LOG(LOG_NORMAL, (", done.\n"));
         }
 
@@ -382,7 +382,7 @@ int main(int argc, char *argv[])
             int flags;
 
             LOG(LOG_NORMAL, (" - adding trampoline @ %04X",
-                             ctx->start));
+                             ctx.start));
             flags = 0;
             flags |= patch_links ? TRAMPOLINE_FLAG_REGEN: 0;
             flags |= c264 ? TRAMPOLINE_FLAG_C264: 0;
@@ -401,22 +401,22 @@ int main(int argc, char *argv[])
                 LOG(LOG_NORMAL, (" and color table"));
             }
 
-            bprg_trampoline_add(ctx, t_start, t_var, t_end, flags);
+            bprg_trampoline_add(&ctx, t_start, t_var, t_end, flags);
             LOG(LOG_NORMAL, (", done.\n"));
         }
         if(patch_links)
         {
             LOG(LOG_NORMAL, (" - clobbering basic line links"));
-            bprg_link_patch(ctx);
+            bprg_link_patch(&ctx);
             LOG(LOG_NORMAL, (", done.\n"));
         }
 
         strcpy(buf, infilev[c]);
         strcat(buf, ".out.prg");
 
-        bprg_save(ctx, buf);
+        bprg_save(&ctx, buf);
 
-        bprg_free(ctx);
+        bprg_free(&ctx);
     }
 
     return 0;
